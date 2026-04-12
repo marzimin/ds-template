@@ -73,9 +73,15 @@ test-output.xml
 docs/_build/
 docs/_autoapi/
 
-# --- Data (keep structure, ignore contents except tracked files) ---
+# --- Data ---
+# Ignore all data files; track only directory structure via .gitkeep.
+# data/raw/       — drop raw input files here before running the pipeline
+# data/processed/ — prepared (*_prepared.csv) and trained (*_trained.csv) outputs
 data/**
-!data/input_data.csv
+!data/raw/
+!data/raw/.gitkeep
+!data/processed/
+!data/processed/.gitkeep
 
 # --- Notebooks (keep structure, ignore contents except tracked files) ---
 notebooks/**
