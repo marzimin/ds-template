@@ -1,0 +1,141 @@
+# --- OS cruft (macOS) ---
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# --- Python bytecode / caches ---
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.ipynb_checkpoints/
+
+# --- Virtual environments (Poetry/venv/Conda) ---
+.venv/
+venv/
+env/
+env.bak/
+.python-version          # pyenv
+# Conda metadata sometimes appears locally
+.conda/
+conda-meta/
+
+# --- Packaging / build artefacts ---
+build/
+dist/
+wheels/
+*.egg
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+*.whl
+*.manifest
+*.spec
+
+# --- Logs & runtime files ---
+*.log
+log.txt
+logs/
+coverage.xml
+htmlcov/
+.coverage
+.coverage.*
+.cache/
+
+# --- Test reports ---
+test-output.xml
+
+# --- Images generated during runs ---
+*.png
+
+# --- Tools / IDEs ---
+# JetBrains / PyCharm
+.idea/
+# VS Code (optional — keep if you don’t commit workspace settings)
+.vscode/
+# Editor swap/backup files
+*~
+*.swp
+*.swo
+
+# --- Pre-commit (caches) ---
+.pre-commit*
+!.pre-commit-config.yaml
+
+# --- Environment & secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Documentation builds (Sphinx) ---
+docs/_build/
+docs/_autoapi/
+
+# --- Data & MLflow (local, non-source artefacts) ---
+# Keep the data folder structure in Git but ignore actual data by default
+data/**
+!data/.gitkeep
+!data/README.md
+# (Uncomment to keep small example files)
+# !data/examples/**
+# If you use the Cookiecutter Data Science layout, these are covered by data/** already:
+# data/raw/
+# data/interim/
+# data/processed/
+# data/external/
+
+# General ML artefacts / outputs
+artifacts/
+outputs/
+models/
+checkpoints/
+tensorboard/
+lightning_logs/
+runs/                 # e.g. TensorBoard default
+
+# Model/serialisation files (binary, large)
+*.ckpt
+*.pth
+*.pt
+*.h5
+*.hdf5
+*.onnx
+*.tflite
+*.pb
+*.keras
+*.pkl
+*.joblib
+*.npz
+*.npy
+
+# MLflow local tracking
+mlruns/               # default local MLflow backend store
+mlartifacts/          # if you use a local artifacts destination
+mlflow.db
+mlruns.db
+
+# Plots
+plots/*
+
+# Reports
+reports/*
+
+# Local SQLite/DB files often used for experiments
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+
+# Terraform (only under /terraform)
+terraform/.terraform/
+terraform/lambda_function.zip
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/crash.log
+terraform/crash.*.log
+terraform/lambda_function.zip

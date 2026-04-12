@@ -1,0 +1,115 @@
+[tool.poetry]
+name = "ds-template"
+version = "0.0.1"
+description = ""
+authors = ["Alison Tully <alison.tully@octopusmoney.com>"]
+
+packages = [
+  { include = "ds_template" },
+  { include = "src" }
+]
+
+[tool.poetry.scripts]
+pipeline = "ds_template.main:main"
+
+[tool.poetry.dependencies]
+python = ">=3.12,<3.13"
+numpy = ">=1.26,<2.0"
+pandas = "^2.3.2"
+pyarrow = ">=14,<18"
+mlflow = "3.9.0rc0"
+xgboost = "^2.0.1"
+snowflake-connector-python = "^4.3.0"
+snowflake-sqlalchemy = "^1.7.3"
+Pillow = "12.1.1"
+omegaconf = "*"
+python-dotenv = "*"
+pyyaml = "*"
+types-pyyaml = "^6.0.12.12"
+openpyxl = "^3.1.2"
+seaborn = "^0.13.0"
+pandera = "^0.18.0"
+tomli = "^2.0.1"
+fsspec = "^2024.10.0"
+setuptools = "^80.9.0"
+cryptography = "^46.0.5"
+boto3 = "^1.42.30"
+statsmodels = "^0.14.6"
+botocore = {extras = ["crt"], version = "^1.42.41"}
+werkzeug = "3.1.6"
+flask = "3.1.3"
+tornado = "6.5.5"
+
+
+[tool.poetry.group.dev.dependencies]
+pre-commit = "*"
+flake8 = "*"
+mypy = "*"
+sphinx = "^7.3.7"
+myst-parser = "^3.0.1"
+sphinx-rtd-theme = "^2.0.0"
+pylint = "^3.3.8"
+pydocstyle = "^6.3.0"
+jupyterlab-code-formatter = "^3.0.2"
+pytest = "^9.0.2"
+jupyterlab = "^4.5.3"
+ipykernel = "^7.1.0"
+ruff = "0.15.0"
+black = "26.3.1"
+pyasn1 = "0.6.3"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q"
+testpaths = ["tests"]
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.ruff]
+line-length = 88
+lint.select = ["E", "F", "I"]
+lint.ignore = ["E203", "E266", "E501"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101"]  # allow assert statements in tests
+
+[tool.pydocstyle]
+convention = "google"
+add-ignore = ["D100", "D104"]  # ignore missing module/package docstrings
+
+[tool.pylint.'MESSAGES CONTROL']
+disable = [
+  # already present
+  "C0114",  # missing-module-docstring
+  "C0115",  # missing-class-docstring
+  "C0116",  # missing-function-docstring
+
+  # new global ignores
+  "E0401",  # import-error (e.g. optional deps in pre-commit venv)
+  "C0103",  # invalid-name (constants/vars like Sphinx config)
+  "C0301",  # line-too-long
+  "W0613",  # unused-argument (e.g. Sphinx setup(app))
+  "W0107",  # unnecessary-pass
+  "W0622",  # redefined-builtin (e.g. 'copyright' in Sphinx)
+  "W0718",  # broad-exception-caught
+  "R1722",  # consider-using-sys-exit
+  "R0903",  # too-few-public-methods (simple data/ABC classes)
+  "R0801",  # duplicate-code
+  "W1203",  # logging-fstring-interpolation (we prefer f-strings)
+]
+
+[tool.pylint.format]
+max-line-length = 88

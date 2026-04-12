@@ -1,0 +1,12 @@
+.git
+.venv
+**/__pycache__/
+**/*.pyc
+.vscode
+.idea
+data
+plots
+outputs
+mlruns
+*.log
+.DS_Store

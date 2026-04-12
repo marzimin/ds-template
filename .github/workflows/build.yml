@@ -1,0 +1,84 @@
+name: Build Container
+
+on:
+  push:
+    branches: ["main"]
+    paths-ignore:
+      - '.github/**'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Bump tag
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        with:
+          fetch-depth: 20 # If we fail to tag a build more than 20 commits in a row, we have bigger problems
+          fetch-tags: true
+      - id: bump
+        run: |
+          LATEST_TAG=$(git describe --tags --abbrev=0 main | head -n 1)
+          COMMIT_DESC=$(git log --format=%B -n 1 "${{github.sha}}")
+          NEW_TAG="v$(( ${LATEST_TAG//v} + 1 ))"
+
+          echo "::notice ::Latest git tag is: '$LATEST_TAG'"
+          echo "::notice ::New tag: $NEW_TAG pointing to commit: $COMMIT_DESC"
+
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+          git tag -a "${NEW_TAG}" -m "[${NEW_TAG}]: $COMMIT_DESC"
+          git push origin "$NEW_TAG"
+          echo "tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: [ tag ]
+    name: Build docker image
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        with:
+          fetch-tags: true
+
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+        with:
+          version: v0.27.0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@f2e9d495b03c8294c97f731a3419cc72a206d05a # v5.1.0
+        with:
+          aws-region: "eu-west-2"
+          aws-access-key-id: ${{ secrets.ECR_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.ECR_SECRET_ACCESS_KEY }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076 # v2.0.1
+
+      - name: Build Docker Container
+        id: push
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          build-args: |
+            VERSION=${{needs.tag.outputs.tag}}
+          platforms: linux/amd64
+          tags: |
+            294553143120.dkr.ecr.eu-west-2.amazonaws.com/data-template:${{needs.tag.outputs.tag}}
+          annotations: |
+            org.opencontainers.image.revision=${{github.sha}}
+            org.opencontainers.image.source=${{github.repositoryUrl}}
+            org.opencontainers.image.title=data-template
+            org.opencontainers.image.url=${{github.repositoryUrl}}
+            org.opencontainers.image.version=${{needs.tag.outputs.tag}}
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
