@@ -1,6 +1,5 @@
 import argparse
 import logging
-from typing import Optional
 
 from src.pipelines.prepare_data import PrepareDataPipeline
 from src.pipelines.train_model import TrainModelPipeline
@@ -32,13 +31,6 @@ def parse_args() -> argparse.Namespace:
         help="Optional custom run name for MLflow",
     )
     return parser.parse_args()
-
-
-def resolve_run_name(cli_value: Optional[str]) -> str:
-    """Get a run name from CLI or prompt the user."""
-    if cli_value:
-        return cli_value
-    return input("Enter a custom run name: ").strip() or "Default_Run_Name"
 
 
 def main() -> None:

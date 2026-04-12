@@ -5,10 +5,27 @@ import pytest
 
 from src.pipelines.train_model import TrainModelPipeline
 
+_MOCK_CONFIG = {
+    "model_name": "xgboost",
+    "model_params": {
+        "objective": "binary:logistic",
+        "n_estimators": 10,
+    },
+    "test_size": 0.5,
+    "random_state": 123,
+    "stratify": True,
+    "target_column": "TARGET",
+    "data": {
+        "input_file": "input_data.csv",
+        "prepared_file": "prepared_data.csv",
+        "output_file": "output_data.csv",
+    },
+}
+
 
 @pytest.fixture(name="data")
 def dummy_data_fixture():
-    # Small, balanced sample for train/test split
+    """Small, balanced binary sample for train/test split."""
     return pd.DataFrame(
         {"FEATURE1": [1, 2, 3, 4], "FEATURE2": [5, 6, 7, 8], "TARGET": [0, 1, 0, 1]}
     )
@@ -16,26 +33,12 @@ def dummy_data_fixture():
 
 @pytest.fixture(name="pipeline")
 def mock_pipeline_fixture(data):
-    # Patch where TrainModelPipeline looks up these names (module scope)
+    """TrainModelPipeline with config and data I/O mocked out."""
     with (
-        patch("src.pipelines.train_model.read_config") as mock_config,
-        patch("src.pipelines.train_model.read_data") as mock_read,
+        patch("src.pipelines.train_model.read_config", return_value=_MOCK_CONFIG),
+        patch("src.pipelines.train_model.read_data", return_value=data),
     ):
-        mock_config.return_value = {
-            "model_name": "xgboost",
-            "model_params": {
-                "objective": "binary:logistic",
-                "n_estimators": 10,
-            },
-            "test_size": 0.5,
-            "random_state": 123,
-            "stratify": True,
-        }
-        mock_read.return_value = data
-
-        pipeline_instance = TrainModelPipeline()
-
-    return pipeline_instance
+        return TrainModelPipeline()
 
 
 def test_pipeline_run(pipeline, data):
@@ -56,16 +59,16 @@ def test_pipeline_run(pipeline, data):
         patch("src.pipelines.train_model.write_data") as mock_write,
     ):
         pipeline.run()
-        assert pipeline.model is not None
 
+        assert pipeline.model is not None
         mock_write.assert_called_once()
-        _, kwargs = mock_write.call_args
+
         written_df = mock_write.call_args[0][0]
-        table_name = kwargs["table_name"]
-        schema_obj = kwargs["schema_obj"]
+        kwargs = mock_write.call_args.kwargs
+
         assert "PREDICTION" in written_df.columns
-        assert table_name == "TEST_DS_TABLE_IRIS_OUTPUT"
-        assert schema_obj == "output_data"
+        assert kwargs["file_name"] == "output_data.csv"
+        assert kwargs["schema_obj"] == "output_data"
 
 
 def test_train_method(pipeline, data):

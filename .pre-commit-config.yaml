@@ -30,20 +30,10 @@ repos:
           - -x
           - .venv,tests
 
-
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.19.1
     hooks:
       - id: mypy
         additional_dependencies:
-          [types-requests, types-PyYAML, pandas, numpy, pydantic, mlflow, xgboost, scikit-learn]
-        exclude: ^tests/
-
-  - repo: https://github.com/PyCQA/pydocstyle
-    rev: 6.3.0
-    hooks:
-      - id: pydocstyle
-        args:
-          - --convention=google
-          - --add-ignore=D100,D104
+          [types-PyYAML, pandas, numpy, mlflow, xgboost, scikit-learn]
         exclude: ^tests/

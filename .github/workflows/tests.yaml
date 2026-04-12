@@ -21,34 +21,17 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install Poetry
-        uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a
-        with:
-          virtualenvs-in-project: true
-          installer-parallel: false
-
-      - name: Cache Poetry downloads
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/pypoetry
-            ~/.cache/pip
-          key: ${{ runner.os }}-py3.12-poetry-${{ hashFiles('**/poetry.lock') }}
+        run: uv python install 3.12
 
       - name: Install dependencies (incl. dev)
-        run: |
-          rm -rf .venv
-          poetry --version
-          poetry install --with dev --no-interaction --no-ansi --sync
+        run: uv sync --all-extras
 
       - name: Run tests (pytest)
-        run: |
-          poetry run pytest -q --maxfail=1 --disable-warnings --junitxml=test-output.xml
+        run: uv run pytest -q --maxfail=1 --disable-warnings --junitxml=test-output.xml
 
       - name: Upload test report
         if: always()

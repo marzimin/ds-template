@@ -15,15 +15,15 @@ __pycache__/
 .pytype/
 .ipynb_checkpoints/
 
-# --- Virtual environments (Poetry/venv/Conda) ---
+# --- Virtual environments ---
 .venv/
 venv/
 env/
 env.bak/
-.python-version          # pyenv
-# Conda metadata sometimes appears locally
-.conda/
-conda-meta/
+.python-version
+
+# --- Claude ---
+.claude/
 
 # --- Packaging / build artefacts ---
 build/
@@ -54,11 +54,8 @@ test-output.xml
 *.png
 
 # --- Tools / IDEs ---
-# JetBrains / PyCharm
 .idea/
-# VS Code (optional — keep if you don’t commit workspace settings)
 .vscode/
-# Editor swap/backup files
 *~
 *.swp
 *.swo
@@ -76,29 +73,22 @@ test-output.xml
 docs/_build/
 docs/_autoapi/
 
-# --- Data & MLflow (local, non-source artefacts) ---
-# Keep the data folder structure in Git but ignore actual data by default
+# --- Data (keep structure, ignore contents except tracked files) ---
 data/**
-!data/.gitkeep
-!data/README.md
-# (Uncomment to keep small example files)
-# !data/examples/**
-# If you use the Cookiecutter Data Science layout, these are covered by data/** already:
-# data/raw/
-# data/interim/
-# data/processed/
-# data/external/
+!data/input_data.csv
 
-# General ML artefacts / outputs
+# --- Notebooks (keep structure, ignore contents except tracked files) ---
+notebooks/**
+!notebooks/example_notebook.ipynb
+
+# --- ML artefacts / outputs ---
 artifacts/
 outputs/
 models/
 checkpoints/
-tensorboard/
-lightning_logs/
-runs/                 # e.g. TensorBoard default
+runs/
 
-# Model/serialisation files (binary, large)
+# --- Model files (binary, large) ---
 *.ckpt
 *.pth
 *.pt
@@ -113,29 +103,18 @@ runs/                 # e.g. TensorBoard default
 *.npz
 *.npy
 
-# MLflow local tracking
-mlruns/               # default local MLflow backend store
-mlartifacts/          # if you use a local artifacts destination
+# --- MLflow local tracking ---
+mlruns/
+mlartifacts/
 mlflow.db
 mlruns.db
 
-# Plots
+# --- Plots & reports ---
 plots/*
-
-# Reports
 reports/*
 
-# Local SQLite/DB files often used for experiments
+# --- Local databases ---
 *.sqlite
 *.sqlite3
 *.db
 *.db-journal
-
-# Terraform (only under /terraform)
-terraform/.terraform/
-terraform/lambda_function.zip
-terraform/*.tfstate
-terraform/*.tfstate.*
-terraform/crash.log
-terraform/crash.*.log
-terraform/lambda_function.zip
