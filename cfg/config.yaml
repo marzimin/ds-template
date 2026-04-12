@@ -1,14 +1,21 @@
 data:
+  dir: "data/processed"
+  raw_dir: "data/raw"
   input_file: "input_data.csv"
-  prepared_file: "prepared_data.csv"
-  output_file: "output_data.csv"
 
 target_column: "TARGET"
 
-model_name: "random_forest"
+model_registry:
+  xgboost: "xgboost.XGBClassifier"
+  xgb: "xgboost.XGBClassifier"
+  random_forest: "sklearn.ensemble.RandomForestClassifier"
+  rf: "sklearn.ensemble.RandomForestClassifier"
+
+model_name: "random_forest" # choose from model_registry
 model_params:
   n_estimators: 50
   max_depth: 10
+  class_weights: "balanced"
 
 stratify: false
 test_size: 0.2

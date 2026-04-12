@@ -25,14 +25,15 @@ class PrepareDataPipeline(Pipeline):
         logger.info("Starting the data preparation pipeline.")
 
         input_file = self.config["data"]["input_file"]
-        prepared_file = self.config["data"]["prepared_file"]
 
-        df = read_data(file_name=input_file, schema_obj="input_data")
+        df = read_data(file_name=input_file, raw=True, schema_obj="input_data")
         logger.info("Input data read. Shape: %s", df.shape)
 
         df = df.pipe(self._func1).pipe(self._func2).pipe(self._func3).pipe(self._func4)
 
-        write_data(df, file_name=prepared_file, schema_obj="prepared_data")
+        write_data(
+            df, file_name=input_file, suffix="prepared", schema_obj="prepared_data"
+        )
         logger.info("Processed data saved.")
 
     @staticmethod

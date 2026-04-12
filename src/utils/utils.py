@@ -19,8 +19,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path("data")
-
 
 def read_config() -> dict[str, Any]:
     """Read the YAML configuration file and return its contents.
@@ -32,6 +30,17 @@ def read_config() -> dict[str, Any]:
     with open(config_file_path, "r", encoding="utf-8") as file:
         config_data = yaml.safe_load(file)
     return cast(dict[str, Any], config_data)
+
+
+def _derive_filename(file_name: str, suffix: str) -> str:
+    """Append a suffix to a file stem, preserving the .csv extension.
+
+    Examples:
+        ``_derive_filename("input_data.csv", "prepared")`` → ``"input_data_prepared.csv"``
+        ``_derive_filename("input_data.csv", "trained")``    → ``"input_data_trained.csv"``
+    """
+    stem = file_name.removesuffix(".csv")
+    return f"{stem}_{suffix}.csv"
 
 
 def _normalise_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -49,12 +58,19 @@ def _normalise_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 def read_data(
     file_name: str | None = None,
+    suffix: str | None = None,
+    raw: bool = False,
     schema_obj: str | None = None,
 ) -> pd.DataFrame:
-    """Read data from a CSV file in the data directory.
+    """Read data from a CSV file in the configured data directory.
 
     Args:
-        file_name: CSV file name (with or without .csv extension).
+        file_name: Base CSV file name (with or without .csv extension).
+        suffix: Optional suffix to append to the file stem before reading
+            (e.g. ``"prepared"`` resolves ``input_data.csv`` →
+            ``input_data_prepared.csv``).
+        raw: When ``True``, read from ``data.raw_dir``; otherwise from
+            ``data.dir``.
         schema_obj: Optional Pandera schema key for validation.
 
     Returns:
@@ -67,10 +83,15 @@ def read_data(
     if file_name is None:
         raise ValueError("file_name must be provided.")
 
-    if not file_name.endswith(".csv"):
+    config = read_config()
+    data_dir = Path(config["data"]["raw_dir"] if raw else config["data"]["dir"])
+
+    if suffix:
+        file_name = _derive_filename(file_name, suffix)
+    elif not file_name.endswith(".csv"):
         file_name = f"{file_name}.csv"
 
-    file_path = DATA_DIR / file_name
+    file_path = data_dir / file_name
     if not file_path.exists():
         raise FileNotFoundError(f"Data file not found: {file_path}")
 
@@ -93,17 +114,18 @@ def read_data(
 def write_data(
     df: pd.DataFrame,
     file_name: str,
+    suffix: str | None = None,
     schema_obj: str | None = None,
 ) -> None:
-    """Write data to a CSV file in the data directory.
+    """Write data to a CSV file in the configured data directory.
 
     Args:
         df: DataFrame to write.
-        file_name: Output CSV file name (with or without .csv extension).
+        file_name: Base CSV file name (with or without .csv extension).
+        suffix: Optional suffix to append to the file stem before writing
+            (e.g. ``"prepared"`` resolves ``input_data.csv`` →
+            ``input_data_prepared.csv``).
         schema_obj: Optional Pandera schema key for validation before writing.
-
-    Raises:
-        ValueError: If DataFrame is empty.
     """
     if df.empty:
         logger.info("DataFrame is empty; skipping write.")
@@ -117,12 +139,16 @@ def write_data(
             logger.error("Data schema validation failed: %s", exc)
             raise
 
-    if not file_name.endswith(".csv"):
+    if suffix:
+        file_name = _derive_filename(file_name, suffix)
+    elif not file_name.endswith(".csv"):
         file_name = f"{file_name}.csv"
 
-    file_path = DATA_DIR / file_name
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    config = read_config()
+    data_dir = Path(config["data"]["dir"])
+    data_dir.mkdir(parents=True, exist_ok=True)
 
+    file_path = data_dir / file_name
     df.to_csv(file_path, index=False)
 
     logger.info(

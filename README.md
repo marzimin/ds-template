@@ -137,7 +137,7 @@ src/
     ├── schemas.py           # Pandera data validation schemas
     └── utils.py             # CSV I/O and config helpers
 cfg/
-└── config.yaml             # Model and training configuration
+└── config.yaml             # Dataset, model and training configuration
 data/
 └── input_data.csv           # Sample breast cancer dataset
 tests/                       # Pytest test suite

@@ -11,14 +11,20 @@ _MOCK_CONFIG = {
         "objective": "binary:logistic",
         "n_estimators": 10,
     },
+    "model_registry": {
+        "xgboost": "xgboost.XGBClassifier",
+        "xgb": "xgboost.XGBClassifier",
+        "random_forest": "sklearn.ensemble.RandomForestClassifier",
+        "rf": "sklearn.ensemble.RandomForestClassifier",
+    },
     "test_size": 0.5,
     "random_state": 123,
     "stratify": True,
     "target_column": "TARGET",
     "data": {
+        "dir": "data/processed",
+        "raw_dir": "data/raw",
         "input_file": "input_data.csv",
-        "prepared_file": "prepared_data.csv",
-        "output_file": "output_data.csv",
     },
 }
 
@@ -67,7 +73,8 @@ def test_pipeline_run(pipeline, data):
         kwargs = mock_write.call_args.kwargs
 
         assert "PREDICTION" in written_df.columns
-        assert kwargs["file_name"] == "output_data.csv"
+        assert kwargs["file_name"] == "input_data.csv"
+        assert kwargs["suffix"] == "trained"
         assert kwargs["schema_obj"] == "output_data"
 
 
