@@ -3,6 +3,7 @@ import logging
 
 import mlflow
 
+from src.pipelines.eda import EDAPipeline
 from src.pipelines.prepare_data import PrepareDataPipeline
 from src.pipelines.train_model import TrainModelPipeline
 from src.utils.utils import setup_mlflow
@@ -21,6 +22,11 @@ def parse_args() -> argparse.Namespace:
         "--prepare-data",
         action="store_true",
         help="Run the PrepareDataPipeline",
+    )
+    parser.add_argument(
+        "--eda",
+        action="store_true",
+        help="Run the EDAPipeline",
     )
     parser.add_argument(
         "--train-model",
@@ -47,11 +53,15 @@ def main() -> None:
         if args.prepare_data:
             PrepareDataPipeline().run()
 
+        elif args.eda:
+            EDAPipeline().run()
+
         elif args.train_model:
             TrainModelPipeline(run_name=run_name).run()
 
         else:
             PrepareDataPipeline().run()
+            EDAPipeline().run()
             TrainModelPipeline(run_name=run_name).run()
 
 
