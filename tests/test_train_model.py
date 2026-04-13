@@ -31,9 +31,13 @@ _MOCK_CONFIG = {
 
 @pytest.fixture(name="data")
 def dummy_data_fixture():
-    """Small, balanced binary sample for train/test split."""
+    """Binary sample large enough for both classes to appear in train and test splits."""
     return pd.DataFrame(
-        {"FEATURE1": [1, 2, 3, 4], "FEATURE2": [5, 6, 7, 8], "TARGET": [0, 1, 0, 1]}
+        {
+            "FEATURE1": list(range(20)),
+            "FEATURE2": list(range(20, 40)),
+            "TARGET": [0, 1] * 10,
+        }
     )
 
 

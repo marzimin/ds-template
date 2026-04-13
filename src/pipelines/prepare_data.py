@@ -16,9 +16,11 @@ class PrepareDataPipeline(Pipeline):
     """Pipeline that loads raw data, runs placeholder transforms, and persists results."""
 
     def __init__(self) -> None:
-        """Initialise configuration."""
+        """Initialize configuration."""
         logger.info("Initializing the PrepareDataPipeline.")
         self.config = read_config()
+        if not self.config:
+            raise ValueError("Configuration file is empty or not found.")
 
     def run(self) -> None:
         """Execute the data preparation workflow end to end."""
@@ -36,6 +38,8 @@ class PrepareDataPipeline(Pipeline):
         )
         logger.info("Processed data saved.")
 
+    # data cleaning and feature engineering functions
+    # all functions prior to train-test split can be written below
     @staticmethod
     def _func1(df: pd.DataFrame) -> pd.DataFrame:
         """Placeholder transform step 1 — replace with your logic."""
