@@ -1,8 +1,11 @@
 import argparse
 import logging
 
+import mlflow
+
 from src.pipelines.prepare_data import PrepareDataPipeline
 from src.pipelines.train_model import TrainModelPipeline
+from src.utils.utils import setup_mlflow
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,15 +42,17 @@ def main() -> None:
 
     run_name = args.run_name or "Default_Run_Name"
 
-    if args.prepare_data:
-        PrepareDataPipeline().run()
+    setup_mlflow()
+    with mlflow.start_run(run_name=run_name):
+        if args.prepare_data:
+            PrepareDataPipeline().run()
 
-    elif args.train_model:
-        TrainModelPipeline(run_name=run_name).run()
+        elif args.train_model:
+            TrainModelPipeline(run_name=run_name).run()
 
-    else:
-        PrepareDataPipeline().run()
-        TrainModelPipeline(run_name=run_name).run()
+        else:
+            PrepareDataPipeline().run()
+            TrainModelPipeline(run_name=run_name).run()
 
 
 if __name__ == "__main__":

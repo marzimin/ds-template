@@ -1,8 +1,10 @@
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any, cast
 
+import mlflow
 import pandas as pd
 import pandera.pandas as pa
 import yaml
@@ -18,6 +20,22 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+def setup_mlflow() -> str:
+    """Configure the MLflow tracking URI from environment variables.
+
+    Idempotent: if the tracking URI is already set to the configured value,
+    the URI is not reset.
+
+    Returns:
+        The active MLflow tracking URI.
+    """
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000")
+    if mlflow.get_tracking_uri() != tracking_uri:
+        mlflow.set_tracking_uri(tracking_uri)
+        logger.info("MLflow tracking URI set to: %s", tracking_uri)
+    return tracking_uri
 
 
 def read_config() -> dict[str, Any]:

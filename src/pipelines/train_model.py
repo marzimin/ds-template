@@ -1,6 +1,7 @@
 import importlib
 import logging
 import os
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Optional
 
@@ -16,13 +17,16 @@ from sklearn.metrics import (
     auc,
     classification_report,
     confusion_matrix,
+    f1_score,
     precision_recall_curve,
+    precision_score,
+    recall_score,
     roc_curve,
 )
 from sklearn.model_selection import train_test_split
 
 from src.pipelines.pipeline import Pipeline
-from src.utils.utils import read_config, read_data, write_data
+from src.utils.utils import read_config, read_data, setup_mlflow, write_data
 
 load_dotenv()
 
@@ -67,9 +71,7 @@ class TrainModelPipeline(Pipeline):
         """Execute training and log metrics, model, and plots to MLflow."""
         logger.info("Starting the training pipeline.")
 
-        tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000")
-        mlflow.set_tracking_uri(tracking_uri)
-        logger.info(f"MLflow tracking URI set to: {tracking_uri}")
+        setup_mlflow()
 
         input_file = self.config["data"]["input_file"]
         target_col = str(self.config.get("target_column", "TARGET"))
@@ -89,17 +91,36 @@ class TrainModelPipeline(Pipeline):
         )
 
         self.train(X_train, y_train)
-        train_accuracy = self.evaluate(X_train, y_train)
-        test_accuracy = self.evaluate(X_test, y_test)
+        train_accuracy, train_precision, train_recall, train_f1_score = self.evaluate(
+            X_train, y_train
+        )
+        test_accuracy, test_precision, test_recall, test_f1_score = self.evaluate(
+            X_test, y_test
+        )
 
-        with mlflow.start_run(run_name=self.run_name):
+        # if an active run already exists, wrap with a no-op context; otherwise start a new one.
+        ctx = (
+            nullcontext()
+            if mlflow.active_run()
+            else mlflow.start_run(run_name=self.run_name)
+        )
+        with ctx:
             mlflow.log_param("model_name", self.model_name)
             if self.model_params:
                 mlflow.log_params(self.model_params)
-            mlflow.log_metric("train_accuracy", float(train_accuracy))
-            logger.info(f"MODEL DRIFT: Train Accuracy = {train_accuracy:.4f}")
-            mlflow.log_metric("test_accuracy", float(test_accuracy))
-            logger.info(f"MODEL DRIFT: Test Accuracy = {test_accuracy:.4f}")
+
+            # log metrics
+            metrics = [
+                ("accuracy", train_accuracy, test_accuracy),
+                ("precision", train_precision, test_precision),
+                ("recall", train_recall, test_recall),
+                ("f1_score", train_f1_score, test_f1_score),
+            ]
+            for name, train_val, test_val in metrics:
+                mlflow.log_metric(f"train_{name}", train_val)
+                logger.info(f"MODEL DRIFT: Train {name.capitalize()} = {train_val:.4f}")
+                mlflow.log_metric(f"test_{name}", test_val)
+                logger.info(f"MODEL DRIFT: Test {name.capitalize()} = {test_val:.4f}")
 
             self._log_confusion_matrix(X_test, y_test)
             self._log_classification_report(X_test, y_test)
@@ -130,8 +151,10 @@ class TrainModelPipeline(Pipeline):
         self.model = self._build_model()
         self.model.fit(features, target)
 
-    def evaluate(self, features: pd.DataFrame, target: pd.Series) -> float:
-        """Compute accuracy on the provided data.
+    def evaluate(
+        self, features: pd.DataFrame, target: pd.Series
+    ) -> tuple[float, float, float, float]:
+        """Compute accuracy, precision, recall, and f1-score on the provided data.
 
         Args:
             features: Feature matrix for evaluation.
@@ -147,7 +170,12 @@ class TrainModelPipeline(Pipeline):
         if self.model is None:
             raise RuntimeError("Model has not been trained.")
         y_pred = self.model.predict(features)
-        return float(accuracy_score(target, y_pred))
+        accuracy = float(accuracy_score(target, y_pred))
+        precision = float(precision_score(target, y_pred))
+        recall = float(recall_score(target, y_pred))
+        f1 = float(f1_score(target, y_pred))
+
+        return accuracy, precision, recall, f1
 
     def _build_model(self) -> BaseEstimator:
         """Construct the model based on configuration.
