@@ -128,7 +128,7 @@ class TrainModelPipeline(Pipeline):
             self._log_pr_curve(features=X_test, target=y_test)
 
             if self.model is not None:
-                mlflow.sklearn.log_model(self.model, artifact_path=self.model_name)
+                mlflow.sklearn.log_model(self.model, name=self.model_name)
 
             if self.model is not None:
                 df_out = df.copy()
@@ -237,7 +237,9 @@ class TrainModelPipeline(Pipeline):
         plt.close()
 
         mlflow.log_artifact(str(cm_path), artifact_path=cm_path.parent.name)
-        logger.info("Confusion matrix saved locally to %s and logged to MLflow.")
+        logger.info(
+            "Confusion matrix saved locally to %s and logged to MLflow.", cm_path
+        )
 
     def _log_classification_report(
         self, features: pd.DataFrame, target: pd.Series

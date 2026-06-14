@@ -1,8 +1,22 @@
+"""Pandera schemas for validating data as it flows through the pipeline.
+
+These schemas are intentionally minimal. Pandera validates in **non-strict**
+mode by default: only the columns declared below must be present and pass their
+checks — any additional columns are allowed through untouched. So you only need
+to declare the few columns you actually want to guard.
+
+The demo dataset is the Breast Cancer Wisconsin set; ``MEAN_RADIUS`` and
+``MEAN_TEXTURE`` are declared as representative numeric features. When you bring
+your own data, swap these column names (and the target) for your own — usually a
+one- or two-line change per schema. Column names are matched **after**
+normalisation (uppercase, underscores), e.g. ``mean radius`` → ``MEAN_RADIUS``.
+"""
+
 import warnings
 
 from pandera.pandas import Check, Column, DataFrameSchema
 
-# Ignore some Pydantic user warnings
+# Ignore some Pydantic user warnings surfaced via MLflow/Pandera.
 warnings.filterwarnings(
     "ignore",
     message='.*Field "model_server_url" has conflict with protected namespace.*',
@@ -12,48 +26,17 @@ warnings.filterwarnings(
     "ignore", message=".*Valid config keys have changed in V2*", category=UserWarning
 )
 
-# ---------------------------------------------------------------------------
-# Replace the column definitions below with your own dataset's columns.
-# All 30 features of the Breast Cancer Wisconsin dataset are listed as an
-# example.  input_data_schema and prepared_data_schema share the same
-# structure; output_data_schema adds a PREDICTION column.
-# ---------------------------------------------------------------------------
-
+# A couple of representative feature columns. Other columns pass through
+# untouched (non-strict validation) — add more here to tighten the contract.
 _FEATURE_COLUMNS = {
     "MEAN_RADIUS": Column(float, checks=Check.ge(0)),
     "MEAN_TEXTURE": Column(float, checks=Check.ge(0)),
-    "MEAN_PERIMETER": Column(float, checks=Check.ge(0)),
-    "MEAN_AREA": Column(float, checks=Check.ge(0)),
-    "MEAN_SMOOTHNESS": Column(float, checks=Check.ge(0)),
-    "MEAN_COMPACTNESS": Column(float, checks=Check.ge(0)),
-    "MEAN_CONCAVITY": Column(float, checks=Check.ge(0)),
-    "MEAN_CONCAVE_POINTS": Column(float, checks=Check.ge(0)),
-    "MEAN_SYMMETRY": Column(float, checks=Check.ge(0)),
-    "MEAN_FRACTAL_DIMENSION": Column(float, checks=Check.ge(0)),
-    "RADIUS_ERROR": Column(float, checks=Check.ge(0)),
-    "TEXTURE_ERROR": Column(float, checks=Check.ge(0)),
-    "PERIMETER_ERROR": Column(float, checks=Check.ge(0)),
-    "AREA_ERROR": Column(float, checks=Check.ge(0)),
-    "SMOOTHNESS_ERROR": Column(float, checks=Check.ge(0)),
-    "COMPACTNESS_ERROR": Column(float, checks=Check.ge(0)),
-    "CONCAVITY_ERROR": Column(float, checks=Check.ge(0)),
-    "CONCAVE_POINTS_ERROR": Column(float, checks=Check.ge(0)),
-    "SYMMETRY_ERROR": Column(float, checks=Check.ge(0)),
-    "FRACTAL_DIMENSION_ERROR": Column(float, checks=Check.ge(0)),
-    "WORST_RADIUS": Column(float, checks=Check.ge(0)),
-    "WORST_TEXTURE": Column(float, checks=Check.ge(0)),
-    "WORST_PERIMETER": Column(float, checks=Check.ge(0)),
-    "WORST_AREA": Column(float, checks=Check.ge(0)),
-    "WORST_SMOOTHNESS": Column(float, checks=Check.ge(0)),
-    "WORST_COMPACTNESS": Column(float, checks=Check.ge(0)),
-    "WORST_CONCAVITY": Column(float, checks=Check.ge(0)),
-    "WORST_CONCAVE_POINTS": Column(float, checks=Check.ge(0)),
-    "WORST_SYMMETRY": Column(float, checks=Check.ge(0)),
-    "WORST_FRACTAL_DIMENSION": Column(float, checks=Check.ge(0)),
 }
 
 _TARGET_COLUMN = {"TARGET": Column(int, checks=Check.isin([0, 1]))}
 
+# input_data and prepared_data share the same contract; output_data additionally
+# carries the model's PREDICTION column.
 input_data_schema = DataFrameSchema({**_FEATURE_COLUMNS, **_TARGET_COLUMN})
 
 prepared_data_schema = DataFrameSchema({**_FEATURE_COLUMNS, **_TARGET_COLUMN})
