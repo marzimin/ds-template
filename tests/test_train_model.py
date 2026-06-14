@@ -59,6 +59,7 @@ def test_pipeline_run(pipeline, data):
 
     with (
         patch("mlflow.set_tracking_uri"),
+        patch("src.pipelines.train_model.setup_mlflow"),
         patch("mlflow.start_run", return_value=start_run_cm),
         patch("mlflow.log_param"),
         patch("mlflow.log_metric"),
@@ -87,3 +88,17 @@ def test_train_method(pipeline, data):
     X, y = data.drop(columns=["TARGET"]), data["TARGET"]
     pipeline.train(X, y)
     assert pipeline.model is not None
+
+
+def test_validate_training_data_rejects_non_numeric_features(pipeline):
+    """Copied projects get a clear error for unencoded categorical features."""
+    df = pd.DataFrame(
+        {
+            "FEATURE1": [1.0, 2.0, 3.0, 4.0],
+            "CATEGORY": ["A", "B", "A", "B"],
+            "TARGET": [0, 1, 0, 1],
+        }
+    )
+
+    with pytest.raises(ValueError, match="expects all feature columns to be numeric"):
+        pipeline._validate_training_data(df, "TARGET")

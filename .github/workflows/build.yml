@@ -27,9 +27,16 @@ jobs:
           fetch-tags: true
       - id: bump
         run: |
-          LATEST_TAG=$(git describe --tags --abbrev=0 main | head -n 1)
+          LATEST_TAG=$(git describe --tags --abbrev=0 main 2>/dev/null || echo "v0")
           COMMIT_DESC=$(git log --format=%B -n 1 "${{github.sha}}")
-          NEW_TAG="v$(( ${LATEST_TAG//v} + 1 ))"
+          LATEST_NUMBER="${LATEST_TAG#v}"
+
+          if ! [[ "$LATEST_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error ::Expected integer tags like v1, v2, ... but found '$LATEST_TAG'."
+            exit 1
+          fi
+
+          NEW_TAG="v$(( LATEST_NUMBER + 1 ))"
 
           echo "::notice ::Latest git tag is: '$LATEST_TAG'"
           echo "::notice ::New tag: $NEW_TAG pointing to commit: $COMMIT_DESC"

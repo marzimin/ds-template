@@ -1,19 +1,22 @@
 import logging
 import os
-import re
 from pathlib import Path
 from typing import Any, TypedDict, cast
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import mlflow
 import pandas as pd
-import pandera.pandas as pa
 import seaborn as sns
 import yaml
 from dotenv import load_dotenv
+from mlflow.exceptions import MlflowException
+from pandera.errors import SchemaError
 
-from src.utils.schemas import schemas
+from src.utils.schemas import build_schemas
+from src.utils.schemas import normalise_column_name as _normalise_schema_column_name
 
 load_dotenv()
 
@@ -24,6 +27,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_MLFLOW_TRACKING_URI = "http://127.0.0.1:5000"
+
 
 class ColumnInfo(TypedDict):
     """Per-column metadata used to drive EDA plot selection."""
@@ -33,20 +39,58 @@ class ColumnInfo(TypedDict):
     null_pct: float
 
 
-def setup_mlflow() -> str:
-    """Configure the MLflow tracking URI from environment variables.
+def resolve_project_path(path: str | Path) -> Path:
+    """Resolve relative project paths from the repository root."""
+    project_path = Path(path)
+    if project_path.is_absolute():
+        return project_path
+    return PROJECT_ROOT / project_path
 
-    Idempotent: if the tracking URI is already set to the configured value,
-    the URI is not reset.
+
+def normalise_column_name(column_name: str) -> str:
+    """Normalise a single column name using the project schema convention."""
+    return _normalise_schema_column_name(column_name)
+
+
+def setup_mlflow() -> str:
+    """Configure and verify the MLflow tracking server.
+
+    The template intentionally defaults to a local MLflow server. Start it with
+    ``mlflow server`` before running the CLI, or set ``MLFLOW_TRACKING_URI`` to
+    a reachable tracking server.
 
     Returns:
         The active MLflow tracking URI.
+
+    Raises:
+        RuntimeError: If the configured MLflow server cannot be reached.
     """
-    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000")
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", DEFAULT_MLFLOW_TRACKING_URI)
     if mlflow.get_tracking_uri() != tracking_uri:
         mlflow.set_tracking_uri(tracking_uri)
         logger.info("MLflow tracking URI set to: %s", tracking_uri)
+    _verify_mlflow_tracking_uri(tracking_uri)
     return tracking_uri
+
+
+def _verify_mlflow_tracking_uri(tracking_uri: str) -> None:
+    """Check that an HTTP(S) MLflow tracking server responds before running."""
+    if not tracking_uri.startswith(("http://", "https://")):
+        return
+
+    health_url = tracking_uri.rstrip("/") + "/health"
+    request = Request(health_url, method="GET")
+    try:
+        with urlopen(request, timeout=3):
+            return
+    except (HTTPError, URLError, TimeoutError, OSError, MlflowException) as exc:
+        raise RuntimeError(
+            "MLflow tracking server is required but is not reachable at "
+            f"{tracking_uri!r}. Start it with `mlflow server --host 127.0.0.1 "
+            "--port 5000`, or set MLFLOW_TRACKING_URI to a reachable server. "
+            "The template defaults to a server-backed tracking URI so runs, "
+            "metrics, models, and artifacts are captured consistently."
+        ) from exc
 
 
 def read_config() -> dict[str, Any]:
@@ -55,10 +99,18 @@ def read_config() -> dict[str, Any]:
     Returns:
         dict[str, Any]: Configuration settings loaded from ``cfg/config.yaml``.
     """
-    config_file_path = Path("cfg") / "config.yaml"
+    config_file_path = resolve_project_path(Path("cfg") / "config.yaml")
     with open(config_file_path, "r", encoding="utf-8") as file:
         config_data = yaml.safe_load(file)
     return cast(dict[str, Any], config_data)
+
+
+def get_schema(schema_name: str, config: dict[str, Any]) -> Any:
+    """Return a configured Pandera schema by name."""
+    return build_schemas(
+        target_column=str(config.get("target_column", "TARGET")),
+        target_values=cast(list[object] | None, config.get("target_values")),
+    )[schema_name]
 
 
 def _derive_filename(file_name: str, suffix: str) -> str:
@@ -100,7 +152,9 @@ def read_data(
         raise ValueError("file_name must be provided.")
 
     config = read_config()
-    data_dir = Path(config["data"]["raw_dir"] if raw else config["data"]["dir"])
+    data_dir = resolve_project_path(
+        config["data"]["raw_dir"] if raw else config["data"]["dir"]
+    )
 
     if suffix:
         file_name = _derive_filename(file_name, suffix)
@@ -118,9 +172,9 @@ def read_data(
 
     if schema_obj:
         try:
-            schemas[schema_obj].validate(df)
+            get_schema(schema_obj, config).validate(df)
             logger.info("Data schema validation passed.")
-        except pa.errors.SchemaError as exc:
+        except SchemaError as exc:
             logger.error("Data schema validation failed: %s", exc)
             raise
 
@@ -147,11 +201,13 @@ def write_data(
         logger.info("DataFrame is empty; skipping write.")
         return
 
+    config = read_config()
+
     if schema_obj:
         try:
-            schemas[schema_obj].validate(df)
+            get_schema(schema_obj, config).validate(df)
             logger.info("Data schema validation passed.")
-        except pa.errors.SchemaError as exc:
+        except SchemaError as exc:
             logger.error("Data schema validation failed: %s", exc)
             raise
 
@@ -160,8 +216,7 @@ def write_data(
     elif not file_name.endswith(".csv"):
         file_name = f"{file_name}.csv"
 
-    config = read_config()
-    data_dir = Path(config["data"]["dir"])
+    data_dir = resolve_project_path(config["data"]["dir"])
     data_dir.mkdir(parents=True, exist_ok=True)
 
     file_path = data_dir / file_name
@@ -211,9 +266,7 @@ def _normalise_columns(df: pd.DataFrame) -> pd.DataFrame:
         ``sepal length (cm)`` → ``SEPAL_LENGTH_CM``
         ``target``            → ``TARGET``
     """
-    df.columns = pd.Index(
-        [re.sub(r"[^A-Z0-9]+", "_", col.upper()).strip("_") for col in df.columns]
-    )
+    df.columns = pd.Index([normalise_column_name(col) for col in df.columns])
     return df
 
 
