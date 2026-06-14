@@ -12,7 +12,9 @@ one- or two-line change per schema. Column names are matched **after**
 normalisation (uppercase, underscores), e.g. ``mean radius`` → ``MEAN_RADIUS``.
 """
 
+import re
 import warnings
+from collections.abc import Sequence
 
 from pandera.pandas import Check, Column, DataFrameSchema
 
@@ -33,25 +35,42 @@ _FEATURE_COLUMNS = {
     "MEAN_TEXTURE": Column(float, checks=Check.ge(0)),
 }
 
-_TARGET_COLUMN = {"TARGET": Column(int, checks=Check.isin([0, 1]))}
+_DEFAULT_TARGET_VALUES = [0, 1]
 
-# input_data and prepared_data share the same contract; output_data additionally
-# carries the model's PREDICTION column.
-input_data_schema = DataFrameSchema({**_FEATURE_COLUMNS, **_TARGET_COLUMN})
 
-prepared_data_schema = DataFrameSchema({**_FEATURE_COLUMNS, **_TARGET_COLUMN})
+def normalise_column_name(column_name: str) -> str:
+    """Normalise a single column name the same way CSV reads do."""
+    return re.sub(r"[^A-Z0-9]+", "_", column_name.upper()).strip("_")
 
-output_data_schema = DataFrameSchema(
-    {
-        **_FEATURE_COLUMNS,
-        **_TARGET_COLUMN,
-        "PREDICTION": Column(int, checks=Check.isin([0, 1])),
+
+def build_schemas(
+    target_column: str = "TARGET",
+    target_values: Sequence[object] | None = None,
+) -> dict[str, DataFrameSchema]:
+    """Build schemas using the configured target column and binary values."""
+    valid_target_values = list(target_values or _DEFAULT_TARGET_VALUES)
+    target_schema = {
+        normalise_column_name(target_column): Column(
+            checks=Check.isin(valid_target_values)
+        )
     }
-)
 
-# Dictionary of schemas for lookup by name
-schemas = {
-    "input_data": input_data_schema,
-    "prepared_data": prepared_data_schema,
-    "output_data": output_data_schema,
-}
+    input_data_schema = DataFrameSchema({**_FEATURE_COLUMNS, **target_schema})
+    prepared_data_schema = DataFrameSchema({**_FEATURE_COLUMNS, **target_schema})
+    output_data_schema = DataFrameSchema(
+        {
+            **_FEATURE_COLUMNS,
+            **target_schema,
+            "PREDICTION": Column(checks=Check.isin(valid_target_values)),
+        }
+    )
+
+    return {
+        "input_data": input_data_schema,
+        "prepared_data": prepared_data_schema,
+        "output_data": output_data_schema,
+    }
+
+
+# Dictionary of schemas for lookup by name using demo defaults.
+schemas = build_schemas()

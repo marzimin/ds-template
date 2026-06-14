@@ -13,6 +13,9 @@ After creating a new repository using **"Use this template"**, follow these step
 - Recursively replace:
   - `ds-template` → `your-project-name`
   - `ds_template` → `your_project_name`
+- The starter package is currently imported as `src`. If you want a
+  project-specific package name, rename that package and update imports plus the
+  `pipeline` entry point in `pyproject.toml`.
 
 ---
 
@@ -25,6 +28,8 @@ After creating a new repository using **"Use this template"**, follow these step
   ```
 
 - Update values in `.env` for your local setup (MLflow URI, etc.)
+- The default `MLFLOW_TRACKING_URI` expects a running MLflow server at
+  `http://127.0.0.1:5000`.
 
 ---
 
@@ -89,10 +94,10 @@ uv add --optional dev <package-name>
 
 ### MLflow
 
-Before running training, start an MLflow server:
+Before running any pipeline through the CLI, start an MLflow server:
 
 ```bash
-mlflow server
+uv run mlflow server --host 127.0.0.1 --port 5000
 ```
 
 By default, this will be available at:
@@ -102,6 +107,8 @@ http://127.0.0.1:5000
 ```
 
 Make sure `MLFLOW_TRACKING_URI` is set (either in `.env` or your shell).
+If the server is not reachable, `uv run pipeline` fails before running pipeline
+steps and prints the configured tracking URI plus the command above.
 
 ---
 
@@ -119,6 +126,9 @@ Optional flags:
 - `--eda` — run only the exploratory data analysis step
 - `--train-model` — run only the training step
 - `--run-name <name>` — custom MLflow run name
+
+Use at most one step flag at a time. Run without step flags to execute all
+steps sequentially.
 
 Without flags, all three steps run sequentially (prepare → EDA → train).
 
@@ -139,6 +149,28 @@ uv run python scripts/generate_sample_data.py
 To use your own data, drop a CSV into `data/raw/` named to match
 `data.input_file` in `cfg/config.yaml`, then update the schemas in
 `src/utils/schemas.py` to describe your columns.
+
+The starter training pipeline intentionally assumes:
+
+- A binary classification target with values listed in `target_values`
+- A target column named by `target_column`; names are normalised on read, so
+  `target`, `Target`, and `TARGET` all become `TARGET`
+- Numeric feature columns only
+- No missing feature or target values by training time
+
+If your project has categoricals, datetimes, nulls, multiclass labels, or a
+regression target, update `PrepareDataPipeline`, `TrainModelPipeline`, and the
+schemas before training. The template raises explicit errors for these cases so
+you do not have to interpret lower-level scikit-learn tracebacks.
+
+When running from Docker, point the container at a reachable MLflow server, for
+example:
+
+```bash
+docker run --rm \
+  -e MLFLOW_TRACKING_URI=http://host.docker.internal:5000 \
+  <image-name>
+```
 
 ---
 

@@ -30,8 +30,8 @@ COPY . .
 # Install the project package
 RUN uv sync --no-dev
 
-# Generate the demo dataset so the image runs out of the box.
-# Remove this once you mount or bake in your own data.
+# Generate the demo dataset. At runtime, pass MLFLOW_TRACKING_URI for a
+# reachable MLflow server, for example http://host.docker.internal:5000.
 RUN uv run python scripts/generate_sample_data.py
 
 ENV PYTHONPATH="${APP_HOME}:${PYTHONPATH}"

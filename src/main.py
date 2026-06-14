@@ -2,6 +2,7 @@ import argparse
 import logging
 
 import mlflow
+from mlflow.exceptions import MlflowException
 
 from src.pipelines.eda import EDAPipeline
 from src.pipelines.prepare_data import PrepareDataPipeline
@@ -47,22 +48,40 @@ def main() -> None:
     args = parse_args()
 
     run_name = args.run_name or "Default_Run_Name"
+    selected_steps = [args.prepare_data, args.eda, args.train_model]
+    if sum(selected_steps) > 1:
+        raise ValueError(
+            "Choose only one pipeline flag at a time. Use no flags to run "
+            "prepare-data, EDA, and train-model sequentially."
+        )
 
-    setup_mlflow()
-    with mlflow.start_run(run_name=run_name):
-        if args.prepare_data:
-            PrepareDataPipeline().run()
+    try:
+        tracking_uri = setup_mlflow()
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
 
-        elif args.eda:
-            EDAPipeline().run()
+    try:
+        with mlflow.start_run(run_name=run_name):
+            if args.prepare_data:
+                PrepareDataPipeline().run()
 
-        elif args.train_model:
-            TrainModelPipeline(run_name=run_name).run()
+            elif args.eda:
+                EDAPipeline().run()
 
-        else:
-            PrepareDataPipeline().run()
-            EDAPipeline().run()
-            TrainModelPipeline(run_name=run_name).run()
+            elif args.train_model:
+                TrainModelPipeline(run_name=run_name).run()
+
+            else:
+                PrepareDataPipeline().run()
+                EDAPipeline().run()
+                TrainModelPipeline(run_name=run_name).run()
+    except MlflowException as exc:
+        raise SystemExit(
+            "Could not create an MLflow run at "
+            f"{tracking_uri!r}. Start a compatible MLflow server with "
+            "`mlflow server --host 127.0.0.1 --port 5000`, or set "
+            "MLFLOW_TRACKING_URI to a reachable server."
+        ) from exc
 
 
 if __name__ == "__main__":

@@ -15,8 +15,10 @@ from src.utils.utils import (
     _plot_feature_vs_target,
     _plot_histogram,
     _plot_missing_values,
+    normalise_column_name,
     read_config,
     read_data,
+    resolve_project_path,
     setup_mlflow,
 )
 
@@ -44,7 +46,7 @@ class EDAPipeline(Pipeline):
         setup_mlflow()
 
         input_file = self.config["data"]["input_file"]
-        data_dir = Path(self.config["data"]["dir"])
+        data_dir = resolve_project_path(Path(self.config["data"]["dir"]))
         stem = input_file.removesuffix(".csv")
         prepared_path = data_dir / f"{stem}_prepared.csv"
 
@@ -59,10 +61,18 @@ class EDAPipeline(Pipeline):
         )
         logger.info("Prepared dataset loaded. Shape: %s", df.shape)
 
-        target_col = str(self.config.get("target_column", "TARGET"))
+        target_col = normalise_column_name(
+            str(self.config.get("target_column", "TARGET"))
+        )
+        if target_col not in df.columns:
+            raise KeyError(
+                f"Configured target_column {target_col!r} was not found in prepared "
+                f"data. Available columns: {list(df.columns)}. Column names are "
+                "normalised to uppercase with underscores when CSVs are read."
+            )
         feature_cols = [c for c in df.columns if c != target_col]
 
-        eda_dir = Path(os.getenv("LOCAL_EDA_PATH", "outputs/eda"))
+        eda_dir = resolve_project_path(os.getenv("LOCAL_EDA_PATH", "outputs/eda"))
         eda_dir.mkdir(parents=True, exist_ok=True)
 
         col_info = _detect_feature_types(df[feature_cols])

@@ -15,7 +15,7 @@ from pathlib import Path
 
 from sklearn.datasets import load_breast_cancer
 
-from src.utils.utils import read_config
+from src.utils.utils import read_config, resolve_project_path
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 def main() -> None:
     """Write the demo dataset to the configured raw data directory."""
     config = read_config()
-    raw_dir = Path(config["data"]["raw_dir"])
+    raw_dir = resolve_project_path(Path(config["data"]["raw_dir"]))
     raw_dir.mkdir(parents=True, exist_ok=True)
     output_path = raw_dir / config["data"]["input_file"]
 

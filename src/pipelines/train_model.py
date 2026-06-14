@@ -2,8 +2,7 @@ import importlib
 import logging
 import os
 from contextlib import nullcontext
-from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 
 import matplotlib.pyplot as plt
 import mlflow
@@ -26,7 +25,14 @@ from sklearn.metrics import (
 from sklearn.model_selection import train_test_split
 
 from src.pipelines.pipeline import Pipeline
-from src.utils.utils import read_config, read_data, setup_mlflow, write_data
+from src.utils.utils import (
+    normalise_column_name,
+    read_config,
+    read_data,
+    resolve_project_path,
+    setup_mlflow,
+    write_data,
+)
 
 load_dotenv()
 
@@ -66,6 +72,7 @@ class TrainModelPipeline(Pipeline):
             self.model_params = raw_params
         self.run_name = run_name or "Default_Run_Name"
         self.model: Optional[BaseEstimator] = None
+        self.class_labels: list[object] = []
 
     def run(self) -> None:
         """Execute training and log metrics, model, and plots to MLflow."""
@@ -74,13 +81,14 @@ class TrainModelPipeline(Pipeline):
         setup_mlflow()
 
         input_file = self.config["data"]["input_file"]
-        target_col = str(self.config.get("target_column", "TARGET"))
+        target_col = normalise_column_name(
+            str(self.config.get("target_column", "TARGET"))
+        )
 
         df = read_data(
             file_name=input_file, suffix="prepared", schema_obj="prepared_data"
         )
-        X = df.drop(columns=[target_col])
-        y = df[target_col]
+        X, y = self._validate_training_data(df, target_col)
 
         test_size = float(self.config.get("test_size", 0.2))
         random_state = int(self.config.get("random_state", 42))
@@ -170,12 +178,78 @@ class TrainModelPipeline(Pipeline):
         if self.model is None:
             raise RuntimeError("Model has not been trained.")
         y_pred = self.model.predict(features)
+        positive_label = self.class_labels[-1]
         accuracy = float(accuracy_score(target, y_pred))
-        precision = float(precision_score(target, y_pred))
-        recall = float(recall_score(target, y_pred))
-        f1 = float(f1_score(target, y_pred))
+        precision = float(
+            precision_score(target, y_pred, pos_label=positive_label, zero_division=0)
+        )
+        recall = float(
+            recall_score(target, y_pred, pos_label=positive_label, zero_division=0)
+        )
+        f1 = float(f1_score(target, y_pred, pos_label=positive_label, zero_division=0))
 
         return accuracy, precision, recall, f1
+
+    def _validate_training_data(
+        self, df: pd.DataFrame, target_col: str
+    ) -> tuple[pd.DataFrame, pd.Series]:
+        """Validate template assumptions before sklearn raises opaque errors."""
+        if target_col not in df.columns:
+            raise KeyError(
+                f"Configured target_column {target_col!r} was not found in prepared "
+                f"data. Available columns: {list(df.columns)}. Column names are "
+                "normalised to uppercase with underscores when CSVs are read."
+            )
+
+        features = df.drop(columns=[target_col])
+        target = df[target_col]
+        if features.empty:
+            raise ValueError(
+                "Training requires at least one feature column besides the target."
+            )
+
+        non_numeric_cols = features.select_dtypes(exclude="number").columns.tolist()
+        if non_numeric_cols:
+            raise ValueError(
+                "Default training expects all feature columns to be numeric. "
+                f"Encode, drop, or transform these columns in PrepareDataPipeline: "
+                f"{non_numeric_cols}."
+            )
+
+        null_counts = features.isna().sum()
+        null_feature_cols = null_counts[null_counts > 0].index.tolist()
+        if null_feature_cols:
+            raise ValueError(
+                "Default training does not impute missing feature values. "
+                "Handle nulls in PrepareDataPipeline before training. Columns with "
+                f"nulls: {null_feature_cols}."
+            )
+
+        if target.isna().any():
+            raise ValueError(
+                "Default training requires a non-null target column. Drop or fill "
+                "target nulls in PrepareDataPipeline before training."
+            )
+
+        observed_labels = target.drop_duplicates().tolist()
+        configured_labels = list(self.config.get("target_values") or [])
+        class_labels = configured_labels or observed_labels
+        if len(observed_labels) != 2:
+            raise ValueError(
+                "Default metrics and plots are configured for binary "
+                f"classification, but target_column {target_col!r} has "
+                f"{len(observed_labels)} classes: {observed_labels}. For regression or "
+                "multiclass projects, replace the metrics and schema assumptions in "
+                "TrainModelPipeline."
+            )
+        if set(class_labels) != set(observed_labels):
+            raise ValueError(
+                f"Configured target_values {class_labels} do not match observed "
+                f"target values {observed_labels}."
+            )
+        self.class_labels = class_labels
+
+        return features, target
 
     def _build_model(self) -> BaseEstimator:
         """Construct the model based on configuration.
@@ -214,7 +288,7 @@ class TrainModelPipeline(Pipeline):
             return
 
         y_pred = self.model.predict(features)
-        cm = confusion_matrix(target, y_pred)
+        cm = confusion_matrix(target, y_pred, labels=self.class_labels)
 
         plt.figure(figsize=(6, 4))
         sns.heatmap(
@@ -222,14 +296,14 @@ class TrainModelPipeline(Pipeline):
             annot=True,
             fmt="d",
             cmap="Blues",
-            xticklabels=["Predicted 0", "Predicted 1"],
-            yticklabels=["Actual 0", "Actual 1"],
+            xticklabels=[f"Predicted {label}" for label in self.class_labels],
+            yticklabels=[f"Actual {label}" for label in self.class_labels],
         )
         plt.title("Confusion Matrix")
         plt.ylabel("Actual")
         plt.xlabel("Predicted")
 
-        plots_dir = Path(os.getenv("LOCAL_PLOTS_PATH", "outputs/plots"))
+        plots_dir = resolve_project_path(os.getenv("LOCAL_PLOTS_PATH", "outputs/plots"))
         plots_dir.mkdir(parents=True, exist_ok=True)
 
         cm_path = plots_dir / "confusion_matrix.png"
@@ -253,13 +327,15 @@ class TrainModelPipeline(Pipeline):
             return
 
         y_pred = self.model.predict(features)
-        report = classification_report(target, y_pred)
+        report = classification_report(target, y_pred, zero_division=0)
 
-        reports_dir = Path(os.getenv("LOCAL_REPORTS_PATH", "outputs/reports"))
+        reports_dir = resolve_project_path(
+            os.getenv("LOCAL_REPORTS_PATH", "outputs/reports")
+        )
         reports_dir.mkdir(parents=True, exist_ok=True)
 
         report_path = reports_dir / "classification_report.txt"
-        with open(report_path, "w") as f:
+        with open(report_path, "w", encoding="utf-8") as f:
             f.write(report)
 
         mlflow.log_artifact(str(report_path), artifact_path=report_path.parent.name)
@@ -276,7 +352,7 @@ class TrainModelPipeline(Pipeline):
             return
 
         if hasattr(self.model, "predict_proba"):
-            y_pred_prob = pd.Series(self.model.predict_proba(features)[:, 1])
+            y_pred_prob = self._positive_class_scores(features)
         elif hasattr(self.model, "decision_function"):
             raw_scores = self.model.decision_function(features)
             if hasattr(raw_scores, "ndim") and raw_scores.ndim > 1:
@@ -287,7 +363,8 @@ class TrainModelPipeline(Pipeline):
             logger.warning("Model does not expose predict_proba or decision_function.")
             return
 
-        fpr, tpr, _ = roc_curve(target, y_pred_prob)
+        positive_label = self.class_labels[-1]
+        fpr, tpr, _ = roc_curve(target, y_pred_prob, pos_label=positive_label)
         roc_auc = auc(fpr, tpr)
 
         plt.figure()
@@ -299,7 +376,7 @@ class TrainModelPipeline(Pipeline):
         plt.legend()
         plt.grid()
 
-        plots_dir = Path(os.getenv("LOCAL_PLOTS_PATH", "outputs/plots"))
+        plots_dir = resolve_project_path(os.getenv("LOCAL_PLOTS_PATH", "outputs/plots"))
         plots_dir.mkdir(parents=True, exist_ok=True)
 
         roc_path = plots_dir / "roc_curve.png"
@@ -317,7 +394,7 @@ class TrainModelPipeline(Pipeline):
             return
 
         if hasattr(self.model, "predict_proba"):
-            y_pred_prob = pd.Series(self.model.predict_proba(features)[:, 1])
+            y_pred_prob = self._positive_class_scores(features)
         elif hasattr(self.model, "decision_function"):
             raw_scores = self.model.decision_function(features)
             if hasattr(raw_scores, "ndim") and raw_scores.ndim > 1:
@@ -328,10 +405,13 @@ class TrainModelPipeline(Pipeline):
             logger.warning("Model does not expose predict_proba or decision_function.")
             return
 
-        precision, recall, _ = precision_recall_curve(target, y_pred_prob)
+        positive_label = self.class_labels[-1]
+        precision, recall, _ = precision_recall_curve(
+            target, y_pred_prob, pos_label=positive_label
+        )
         prc_auc = auc(recall, precision)
 
-        prevalence = float(target.mean())
+        prevalence = float((target == positive_label).mean())
 
         plt.figure()
         plt.plot(
@@ -349,7 +429,7 @@ class TrainModelPipeline(Pipeline):
         plt.legend()
         plt.grid()
 
-        plots_dir = Path(os.getenv("LOCAL_PLOTS_PATH", "outputs/plots"))
+        plots_dir = resolve_project_path(os.getenv("LOCAL_PLOTS_PATH", "outputs/plots"))
         plots_dir.mkdir(parents=True, exist_ok=True)
 
         pr_curve_path = plots_dir / "pr_curve.png"
@@ -361,3 +441,18 @@ class TrainModelPipeline(Pipeline):
             "Precision Recall curve saved locally to %s and logged to MLflow.",
             pr_curve_path,
         )
+
+    def _positive_class_scores(self, features: pd.DataFrame) -> pd.Series:
+        """Return probability scores for the positive class label."""
+        if self.model is None:
+            raise RuntimeError("Model has not been trained.")
+        proba = self.model.predict_proba(features)
+        model_classes = cast(list[object], list(getattr(self.model, "classes_", [])))
+        positive_label = self.class_labels[-1]
+        if positive_label not in model_classes:
+            raise ValueError(
+                f"Positive class {positive_label!r} was not found in model classes "
+                f"{model_classes}."
+            )
+        positive_index = model_classes.index(positive_label)
+        return pd.Series(proba[:, positive_index])
