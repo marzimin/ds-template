@@ -18,6 +18,9 @@ uv sync --all-extras
 echo "Installing pre-commit hooks"
 uv run pre-commit install --allow-missing-config
 
+echo "Generating the demo dataset (Breast Cancer Wisconsin)"
+uv run python scripts/generate_sample_data.py
+
 echo "Done."
 echo "Activate the environment with:"
 echo "  source ${VENV_DIR}/bin/activate"

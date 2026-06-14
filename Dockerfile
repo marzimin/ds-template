@@ -30,6 +30,10 @@ COPY . .
 # Install the project package
 RUN uv sync --no-dev
 
+# Generate the demo dataset so the image runs out of the box.
+# Remove this once you mount or bake in your own data.
+RUN uv run python scripts/generate_sample_data.py
+
 ENV PYTHONPATH="${APP_HOME}:${PYTHONPATH}"
 
 CMD ["uv", "run", "pipeline"]

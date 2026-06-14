@@ -57,6 +57,7 @@ This will:
 - Create a `.venv` virtual environment using `uv`
 - Install all project dependencies (including dev extras)
 - Install pre-commit hooks
+- Generate the demo dataset into `data/raw/input_data.csv`
 
 Activate the environment manually later with:
 
@@ -115,12 +116,29 @@ uv run pipeline
 Optional flags:
 
 - `--prepare-data` — run only the data preparation step
+- `--eda` — run only the exploratory data analysis step
 - `--train-model` — run only the training step
 - `--run-name <name>` — custom MLflow run name
 
-Without flags, both steps run sequentially.
+Without flags, all three steps run sequentially (prepare → EDA → train).
 
 MLflow will track metrics, models, and plots for each run.
+
+---
+
+### Sample data
+
+The template ships with the **Breast Cancer Wisconsin** dataset as a runnable
+demo. `setup.sh` generates it automatically; you can regenerate it at any time
+with:
+
+```bash
+uv run python scripts/generate_sample_data.py
+```
+
+To use your own data, drop a CSV into `data/raw/` named to match
+`data.input_file` in `cfg/config.yaml`, then update the schemas in
+`src/utils/schemas.py` to describe your columns.
 
 ---
 
@@ -132,15 +150,19 @@ src/
 ├── pipelines/
 │   ├── pipeline.py         # Abstract Pipeline base class
 │   ├── prepare_data.py     # Data loading and transformations
+│   ├── eda.py              # Exploratory plots logged to MLflow
 │   └── train_model.py      # Model training with MLflow tracking
 └── utils/
-    ├── schemas.py           # Pandera data validation schemas
-    └── utils.py             # CSV I/O and config helpers
+    ├── schemas.py          # Pandera data validation schemas
+    └── utils.py            # CSV I/O and config helpers
 cfg/
 └── config.yaml             # Dataset, model and training configuration
+scripts/
+└── generate_sample_data.py # Writes the demo dataset to data/raw/
 data/
-└── input_data.csv           # Sample breast cancer dataset
-tests/                       # Pytest test suite
+├── raw/                    # Raw input CSV (demo: Breast Cancer Wisconsin)
+└── processed/              # Prepared and trained outputs
+tests/                      # Pytest test suite
 ```
 
 ---
@@ -185,3 +207,8 @@ When data is read or written via the utility functions:
 - Basic sanity checks are applied (e.g. value ranges)
 
 This ensures data consistency across pipeline steps.
+
+Schemas validate in **non-strict** mode: only the columns you declare are
+checked, and any extra columns pass through. The template declares just a couple
+of representative columns from the demo dataset — extend or replace them with
+your own when you swap in your data.
