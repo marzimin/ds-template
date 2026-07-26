@@ -9,7 +9,6 @@ import mlflow
 import mlflow.sklearn
 import pandas as pd
 import seaborn as sns
-from dotenv import load_dotenv
 from sklearn.base import BaseEstimator
 from sklearn.metrics import (
     accuracy_score,
@@ -33,8 +32,6 @@ from src.utils.utils import (
     setup_mlflow,
     write_data,
 )
-
-load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,

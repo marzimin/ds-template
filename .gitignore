@@ -73,7 +73,15 @@ test-output.xml
 docs/_build/
 docs/_autoapi/
 
+# --- Node / frontend ---
+node_modules/
+frontend/dist/
+npm-debug.log*
+yarn-error.log*
+
 # --- Data ---
+# data/ and outputs/ live at the repository root, alongside cfg/, because they
+# are the user-configurable surface of the template rather than backend code.
 # Ignore all data files; track only directory structure via .gitkeep.
 # data/raw/       — drop raw input files here before running the pipeline
 # data/processed/ — prepared (*_prepared.csv) and trained (*_trained.csv) outputs
@@ -84,8 +92,8 @@ data/**
 !data/processed/.gitkeep
 
 # --- Notebooks (keep structure, ignore contents except tracked files) ---
-notebooks/**
-!notebooks/example_notebook.ipynb
+backend/notebooks/**
+!backend/notebooks/example_notebook.ipynb
 
 # --- ML artefacts / outputs ---
 artifacts/

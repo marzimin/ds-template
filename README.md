@@ -2,6 +2,19 @@
 
 A general-purpose template for data science and machine learning workflows.
 
+The repository is split into a **backend** (Python: data pipelines, ML, and the
+API that serves them) and, in due course, a **frontend** (TypeScript/React) that
+displays model outputs. The directories you actually configure — `cfg/`,
+`data/`, and `.env` — sit at the repository root, above both.
+
+```text
+cfg/config.yaml   ← configure your dataset, model, and training here
+data/             ← drop your data here
+outputs/          ← generated plots and reports
+.env              ← shared environment for backend, Docker, and compose
+backend/          ← Python code (pipelines, ML, API)
+```
+
 ## Installation
 
 After creating a new repository using **"Use this template"**, follow these steps:
@@ -13,23 +26,28 @@ After creating a new repository using **"Use this template"**, follow these step
 - Recursively replace:
   - `ds-template` → `your-project-name`
   - `ds_template` → `your_project_name`
-- The starter package is currently imported as `src`. If you want a
-  project-specific package name, rename that package and update imports plus the
-  `pipeline` entry point in `pyproject.toml`.
+- The starter package is currently imported as `src` (that is, `backend/src`).
+  If you want a project-specific package name, rename that package and update
+  imports plus the `pipeline` entry point in `backend/pyproject.toml`.
 
 ---
 
 ## 2. Environment variables
 
-- Copy the example file:
+- Copy the example file **at the repository root**:
 
   ```bash
   cp .env.example .env
   ```
 
+  (`./backend/setup.sh` does this for you if `.env` does not already exist.)
+
 - Update values in `.env` for your local setup (MLflow URI, etc.)
 - The default `MLFLOW_TRACKING_URI` expects a running MLflow server at
   `http://127.0.0.1:5000`.
+- Paths in `.env` and `cfg/config.yaml` resolve relative to the repository
+  root. Set `DS_PROJECT_ROOT` to override that root explicitly; the container
+  image does exactly this.
 
 ---
 
@@ -51,54 +69,62 @@ brew install uv
 
 This project uses **Python 3.12** and **uv** for all dependency management.
 
-Run:
+Run, from the repository root:
 
 ```bash
-PYTHON_VERSION=3.12 ./setup.sh
+PYTHON_VERSION=3.12 ./backend/setup.sh
 ```
 
 This will:
 
-- Create a `.venv` virtual environment using `uv`
+- Create a `backend/.venv` virtual environment using `uv`
 - Install all project dependencies (including dev extras)
 - Install pre-commit hooks
+- Create `.env` from `.env.example` if it does not already exist
 - Generate the demo dataset into `data/raw/input_data.csv`
 
 Activate the environment manually later with:
 
 ```bash
-source .venv/bin/activate
+source backend/.venv/bin/activate
 ```
 
 ---
 
 ## Package management
 
-Dependencies are managed with **uv**.
+Dependencies are managed with **uv**, from the `backend/` directory (that is
+where `pyproject.toml` and `uv.lock` live).
 
 To add a new dependency:
 
 ```bash
-uv add <package-name>
+cd backend && uv add <package-name>
 ```
 
 For development-only dependencies:
 
 ```bash
-uv add --optional dev <package-name>
+cd backend && uv add --optional dev <package-name>
 ```
 
 ---
 
 ## Running the code locally
 
+All `uv` commands below are run from the `backend/` directory.
+
 ### MLflow
 
 Before running any pipeline through the CLI, start an MLflow server:
 
 ```bash
-uv run mlflow server --host 127.0.0.1 --port 5000
+cd backend && uv run mlflow server --host 127.0.0.1 --port 5000
 ```
+
+> On macOS, port 5000 is often taken by the AirPlay Receiver. If the health
+> check fails with a 403, either disable AirPlay Receiver in System Settings or
+> pick another port and set `MLFLOW_TRACKING_URI` to match.
 
 By default, this will be available at:
 
@@ -117,7 +143,7 @@ steps and prints the configured tracking URI plus the command above.
 The project exposes a CLI entrypoint:
 
 ```bash
-uv run pipeline
+cd backend && uv run pipeline
 ```
 
 Optional flags:
@@ -139,16 +165,16 @@ MLflow will track metrics, models, and plots for each run.
 ### Sample data
 
 The template ships with the **Breast Cancer Wisconsin** dataset as a runnable
-demo. `setup.sh` generates it automatically; you can regenerate it at any time
-with:
+demo. `backend/setup.sh` generates it automatically; you can regenerate it at
+any time with:
 
 ```bash
-uv run python scripts/generate_sample_data.py
+cd backend && uv run python scripts/generate_sample_data.py
 ```
 
-To use your own data, drop a CSV into `data/raw/` named to match
-`data.input_file` in `cfg/config.yaml`, then update the schemas in
-`src/utils/schemas.py` to describe your columns.
+To use your own data, drop a CSV into `data/raw/` (at the repository root) named
+to match `data.input_file` in `cfg/config.yaml`, then update the schemas in
+`backend/src/utils/schemas.py` to describe your columns.
 
 The starter training pipeline intentionally assumes:
 
@@ -163,8 +189,18 @@ regression target, update `PrepareDataPipeline`, `TrainModelPipeline`, and the
 schemas before training. The template raises explicit errors for these cases so
 you do not have to interpret lower-level scikit-learn tracebacks.
 
-When running from Docker, point the container at a reachable MLflow server, for
-example:
+---
+
+### Docker
+
+The image needs both `backend/` and the root `cfg/`, so it is **built from the
+repository root** with an explicit Dockerfile path:
+
+```bash
+docker build -f backend/Dockerfile -t <image-name> .
+```
+
+Point the container at a reachable MLflow server when running it:
 
 ```bash
 docker run --rm \
@@ -172,30 +208,46 @@ docker run --rm \
   <image-name>
 ```
 
+Inside the image, the layout mirrors the repository: code at `/opt/app/backend`,
+configuration and data at `/opt/app`, with `DS_PROJECT_ROOT=/opt/app`.
+
 ---
 
 ## Project structure
 
 ```text
-src/
-├── main.py                 # CLI entry point
-├── pipelines/
-│   ├── pipeline.py         # Abstract Pipeline base class
-│   ├── prepare_data.py     # Data loading and transformations
-│   ├── eda.py              # Exploratory plots logged to MLflow
-│   └── train_model.py      # Model training with MLflow tracking
-└── utils/
-    ├── schemas.py          # Pandera data validation schemas
-    └── utils.py            # CSV I/O and config helpers
 cfg/
 └── config.yaml             # Dataset, model and training configuration
-scripts/
-└── generate_sample_data.py # Writes the demo dataset to data/raw/
 data/
 ├── raw/                    # Raw input CSV (demo: Breast Cancer Wisconsin)
 └── processed/              # Prepared and trained outputs
-tests/                      # Pytest test suite
+outputs/                    # EDA plots, training plots, reports
+.env                        # Shared by backend, Docker, and compose
+backend/
+├── pyproject.toml          # Python dependencies and tooling config
+├── setup.sh                # Development environment bootstrap
+├── Dockerfile              # Built from the repository root
+├── scripts/
+│   └── generate_sample_data.py  # Writes the demo dataset to data/raw/
+├── notebooks/              # Exploratory notebooks
+├── tests/                  # Pytest test suite
+└── src/
+    ├── main.py             # CLI entry point
+    ├── pipelines/
+    │   ├── pipeline.py     # Abstract Pipeline base class
+    │   ├── prepare_data.py # Data loading and transformations
+    │   ├── eda.py          # Exploratory plots logged to MLflow
+    │   └── train_model.py  # Model training with MLflow tracking
+    └── utils/
+        ├── schemas.py      # Pandera data validation schemas
+        └── utils.py        # CSV I/O, path resolution, and config helpers
 ```
+
+`cfg/`, `data/`, and `outputs/` deliberately sit at the repository root rather
+than inside `backend/`: they are the part of the template you configure and the
+part the frontend will eventually read, so they stay above the code that
+consumes them. Paths inside them resolve against the repository root, which is
+inferred from the backend package location or set via `DS_PROJECT_ROOT`.
 
 ---
 
@@ -219,19 +271,19 @@ pre-commit run --all-files
 
 ## Testing
 
-Tests live in the `tests/` directory.
+Tests live in the `backend/tests/` directory.
 
 Run all tests with:
 
 ```bash
-uv run pytest
+cd backend && uv run pytest
 ```
 
 ---
 
 ## Schema checks
 
-- Schema definitions live in `src/utils/schemas.py`
+- Schema definitions live in `backend/src/utils/schemas.py`
 
 When data is read or written via the utility functions:
 

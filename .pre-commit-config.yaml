@@ -24,16 +24,21 @@ repos:
       - id: bandit
         args:
           - -c
-          - pyproject.toml
+          - backend/pyproject.toml
           - --severity-level
           - high
           - -x
-          - .venv,tests
+          - .venv,backend/tests
 
+  # Hooks run from the repository root, so mypy is pointed at the backend
+  # project explicitly: its config lives in backend/pyproject.toml and its
+  # imports are rooted at backend/ (`from src.utils...`).
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.19.1
     hooks:
       - id: mypy
         additional_dependencies:
           [types-PyYAML, pandas, numpy, mlflow, xgboost, scikit-learn]
-        exclude: ^tests/
+        files: ^backend/
+        exclude: ^backend/tests/
+        args: ["--config-file", "backend/pyproject.toml"]

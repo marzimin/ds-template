@@ -18,8 +18,6 @@ from pandera.errors import SchemaError
 from src.utils.schemas import build_schemas
 from src.utils.schemas import normalise_column_name as _normalise_schema_column_name
 
-load_dotenv()
-
 # Logging
 logging.basicConfig(
     level=logging.INFO,
@@ -27,8 +25,35 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+def _resolve_project_root() -> Path:
+    """Locate the repository root that holds ``cfg/``, ``data/`` and ``outputs/``.
+
+    These directories live at the repository root — one level above
+    ``backend/`` — so that the user-configurable surface of the template stays
+    separate from the backend and frontend code that consumes it.
+
+    Set ``DS_PROJECT_ROOT`` to override, which is how the container image and
+    any non-standard checkout layout point at the right directory instead of
+    relying on this file's depth on disk.
+
+    Returns:
+        Absolute path to the project root.
+    """
+    env_root = os.getenv("DS_PROJECT_ROOT")
+    if env_root:
+        return Path(env_root).resolve()
+    # .../<root>/backend/src/utils/utils.py -> parents[3] is <root>
+    return Path(__file__).resolve().parents[3]
+
+
+PROJECT_ROOT = _resolve_project_root()
 DEFAULT_MLFLOW_TRACKING_URI = "http://127.0.0.1:5000"
+
+# The project root holds the single .env shared by the backend, the container
+# build, and (later) docker compose. Load it explicitly rather than relying on
+# the current working directory.
+load_dotenv(PROJECT_ROOT / ".env")
 
 
 class ColumnInfo(TypedDict):
