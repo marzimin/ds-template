@@ -1,0 +1,430 @@
+# Architecture: from a terminal pipeline to a web application
+
+## Who this is for
+
+This document is written for a data scientist who is comfortable with Python,
+pandas, scikit-learn, and MLflow, but has not built a web application before. It
+explains what changes when the same modelling code becomes reachable from a
+browser, and introduces the web vocabulary you need in terms of things you
+already know.
+
+It describes **one codebase with two front doors**:
+
+- the **terminal**, which is how you have always run this project, and
+- the **browser**, which is how a non-technical colleague will use it.
+
+Both doors lead to the same pipelines and the same trained model. Neither
+replaces the other.
+
+### Build status
+
+This document describes the target architecture. Not all of it exists yet.
+
+| Layer | Status |
+| --- | --- |
+| Pipelines (`prepare` → `EDA` → `train`) | Built |
+| MLflow tracking, model signature, Model Registry | Built |
+| FastAPI layer (`backend/src/api/`) | Planned — phase 3 |
+| React/TypeScript frontend (`frontend/`) | Planned — phase 4 |
+| `docker compose` orchestration | Planned — phase 5 |
+
+---
+
+## 1. The core shift: a script versus a server
+
+This is the single most important idea in the document. Everything else follows
+from it.
+
+**What you have today is a script.** You type a command, it runs top to bottom,
+it writes files, and it exits. The Python process lives for a few seconds. If it
+hits bad data it raises, prints a traceback, and dies — which is exactly the
+behaviour you want, because you are standing right there reading the output.
+
+```
+start ──> read CSV ──> transform ──> train ──> log to MLflow ──> exit
+```
+
+**What a web application needs is a server.** A server starts once and then does
+nothing. It waits. When a message arrives over the network it runs a small piece
+of Python, sends an answer back, and goes back to waiting. It might do that a
+thousand times before you stop it.
+
+```
+start ──> load model into memory ──> ┌─> wait ──> answer ──┐
+                                     └─────────────────────┘
+                                          (forever)
+```
+
+That difference has three consequences worth internalising:
+
+**State persists between requests.** Your training run loads a model, uses it,
+and throws it away when the process exits. A server loads the model *once at
+startup* and keeps it in memory for every subsequent request. Loading an MLflow
+model takes a second or two — unacceptable on every request, irrelevant once.
+
+**A crash is no longer a local event.** When your script raises, you see it and
+rerun. When a server raises unhandled, it can take down the site for everyone
+using it. So a server validates every input before touching it, and converts
+every failure into a deliberate, readable response. "Raise loudly and let the
+user read the traceback" is correct for a pipeline and wrong for a server.
+
+**Something is always running.** You go from one command that finishes to
+several processes that stay up. That is why `docker compose` exists in phase 5 —
+to collapse that back into a single command.
+
+---
+
+## 2. What "frontend" and "backend" actually mean
+
+These words get used loosely. Concretely, in this repository:
+
+**Backend** — Python that runs on a server. It can read the filesystem, import
+`xgboost`, query MLflow, and load a model. Nobody sees it directly; it only
+produces data. This is everything in `backend/`, and it is where all your
+existing work lives.
+
+**Frontend** — TypeScript that runs *inside the user's browser*. It draws
+buttons, forms, tables, and charts. It cannot read your files, cannot import
+Python libraries, and cannot load an MLflow model. It can only ask the backend
+for data and display the answer.
+
+That last point is the reason the FastAPI layer has to exist at all. It is a
+hard constraint, not a design preference:
+
+> A browser cannot run Python. There is no way for a React page to call your
+> model directly. Something must sit in between that speaks both languages —
+> Python on one side, and the browser's native protocol on the other.
+
+That in-between thing is the API.
+
+---
+
+## 3. The layers
+
+```mermaid
+flowchart TD
+    subgraph browser["Browser (the user's laptop)"]
+        UI["React + TypeScript<br/>forms, tables, charts"]
+    end
+
+    subgraph server["Server (your machine, or a container)"]
+        API["FastAPI<br/>validates requests, formats responses"]
+        ML["src/ml/<br/>pipelines, inference"]
+        MLF[("MLflow<br/>runs, metrics, artifacts,<br/>Model Registry")]
+    end
+
+    CLI["Terminal<br/>make pipeline"]
+
+    UI <-->|"HTTP + JSON"| API
+    API --> ML
+    ML --> MLF
+    API --> MLF
+    CLI --> ML
+
+    style browser fill:#e8f0fe,stroke:#4285f4
+    style server fill:#e6f4ea,stroke:#34a853
+    style CLI fill:#fef7e0,stroke:#fbbc04
+```
+
+Read it as three bands:
+
+- **Yellow** is the door you already use. `make pipeline` calls straight into
+  `src/ml/` and writes to MLflow. The API is not involved at all.
+- **Green** is the backend. `src/ml/` is your existing code, unchanged. FastAPI
+  is a thin new layer that wraps it for network access.
+- **Blue** is the browser. It only ever talks to FastAPI, never to MLflow or
+  your model directly.
+
+Notice that both doors converge on the same `src/ml/` and the same MLflow. There
+is no second copy of the modelling logic.
+
+---
+
+## 4. How a prediction actually travels
+
+Here is a concrete trace of one click, end to end. This is the part that makes
+the abstraction click for most people.
+
+A colleague opens the page, types feature values into a form, and clicks
+**Predict**.
+
+**Step 1 — the browser packages the input.** React collects the form values into
+a small text document called JSON. JSON is just a data format, structurally the
+same as a Python dict:
+
+```json
+{ "MEAN_RADIUS": 17.99, "MEAN_TEXTURE": 10.38, "MEAN_PERIMETER": 122.8 }
+```
+
+**Step 2 — the browser sends an HTTP request.** An HTTP request is three things:
+a **method** (what kind of action), a **path** (which resource), and optionally a
+**body** (the data).
+
+```http
+POST /api/predict
+Content-Type: application/json
+
+{ "MEAN_RADIUS": 17.99, ... }
+```
+
+`POST` means "here is some data, do something with it". `GET` means "give me
+something, I'm not changing anything". Those two cover almost everything here.
+
+**Step 3 — FastAPI validates the input.** Before your code runs, FastAPI checks
+the JSON against a declared schema. Wrong types, missing fields, or text where a
+number belongs are rejected immediately with a clear error. Your Python function
+is only called with input already known to be well-formed.
+
+**Step 4 — your Python runs.** The request becomes a one-row pandas DataFrame and
+goes to the model that was loaded at startup:
+
+```python
+prediction = model.predict(features_df)
+```
+
+This is ordinary code of the kind you already write. Nothing web-specific
+happens here.
+
+**Step 5 — the answer goes back as JSON**, with a status code saying how it went:
+
+```http
+200 OK
+
+{ "prediction": 0, "probability": 0.973, "model_version": "1" }
+```
+
+**Step 6 — React displays it.** The page updates without reloading.
+
+The whole round trip is typically tens of milliseconds, because the expensive
+part — loading the model — already happened at startup.
+
+---
+
+## 5. Status codes: the server's vocabulary for "how did it go"
+
+Every HTTP response carries a three-digit code. You only need a handful:
+
+| Code | Meaning | When you would see it here |
+| --- | --- | --- |
+| `200` | OK | A successful prediction or data fetch |
+| `422` | Your input was invalid | A missing feature, or text sent where a number belongs |
+| `404` | Not found | Asking for an MLflow run ID that does not exist |
+| `503` | Service unavailable | **No trained model yet** |
+| `500` | The server has a bug | Something genuinely broke in our code |
+
+The `503` case deserves its own note, because it is the first thing that happens
+to anyone who clones this template.
+
+On a fresh clone, nobody has trained anything, so there is no registered model to
+load. Rather than crashing at startup — which would make the whole application
+look broken — the API starts normally, serves everything else, and answers
+prediction requests with a readable explanation:
+
+```json
+{ "detail": "No registered model found. Run `make pipeline` to train one." }
+```
+
+The frontend turns that into a friendly banner telling the user what to do,
+instead of a blank screen. This is what "a server must never crash on bad state"
+looks like in practice.
+
+---
+
+## 6. Where the model actually lives
+
+This is the part most likely to feel surprising, so it is worth stating directly.
+
+**The API does not train anything, and it does not contain a model.** MLflow is
+the handoff point between the two halves of the system.
+
+```
+make pipeline  ──writes──>  MLflow Model Registry  <──reads──  FastAPI
+   (training)                 models:/<name>/1                (serving)
+```
+
+Training and serving are fully decoupled. They do not run at the same time, do
+not share memory, and do not need to run on the same machine. Training publishes
+a model; the API looks up whatever the latest published model is and loads it.
+
+Concretely, at startup the API does:
+
+```python
+model = mlflow.pyfunc.load_model("models:/ds-template/latest")
+```
+
+Two details make this work, both of which were built in phase 2:
+
+**`pyfunc` is flavour-agnostic.** The API has no idea whether you trained
+XGBoost, a random forest, or LightGBM. It asks MLflow for "the model" and gets
+back something with a `.predict()` method. Swapping estimators in
+`cfg/config.yaml` requires no API changes whatsoever.
+
+**The model carries its own signature.** When training logs the model, it also
+logs a description of the features it expects — names and types. The API can read
+that back:
+
+```python
+model.metadata.get_input_schema()
+# 30 fields: MEAN_RADIUS (double), MEAN_TEXTURE (double), ...
+```
+
+Which brings us to the most important design rule in this architecture.
+
+---
+
+## 7. The rule that keeps this a template
+
+> **Neither the API nor the frontend may hardcode anything about your dataset.**
+
+If `/api/predict` declared 30 named breast-cancer features, and the React form
+rendered 30 fixed input boxes, then the day you swap in your own data both would
+break — and this would stop being a reusable template.
+
+So the flow is inverted. The frontend *asks* what the fields are:
+
+```
+GET /api/predict/schema
+  ↓
+{ "features": [ {"name": "MEAN_RADIUS", "type": "double"}, ... ] }
+```
+
+...and builds its form from that answer at runtime. The chain of custody is:
+
+```
+your CSV ──> training ──> model signature ──> /api/predict/schema ──> the form
+```
+
+Swap your dataset, retrain, reload the page: the form redraws itself with your
+columns. No code changes anywhere. The same principle applies to the metrics
+dashboard — it renders whatever metric names MLflow reports rather than
+hardcoding `accuracy` and `f1_score`.
+
+---
+
+## 8. Vocabulary, translated
+
+| Web term | What it means | Closest thing you already know |
+| --- | --- | --- |
+| **Endpoint** / **route** | One URL the server responds to | A function in a module |
+| **HTTP method** | `GET` = read, `POST` = send data | Read versus write |
+| **JSON** | Text format for structured data | A `dict`, serialised |
+| **Request / response** | The question and the answer | Function arguments and return value |
+| **Status code** | Three digits describing the outcome | Exception type versus successful return |
+| **Pydantic** | Declares and validates request/response shapes | Pandera, but for JSON instead of DataFrames |
+| **OpenAPI schema** | Machine-readable description of the whole API | A type stub file for your service |
+| **Port** | Numbered channel a process listens on | Which door of the building |
+| **Process** | A running program | One `python` invocation |
+| **CORS** | Browser rule about which sites may call the API | An allow-list |
+| **SPA** | Single-page app: JS redraws instead of reloading | A notebook that updates a cell's output in place |
+
+### Pydantic and Pandera are the same idea
+
+You already validate DataFrames declaratively:
+
+```python
+# Pandera — validates a DataFrame
+DataFrameSchema({"MEAN_RADIUS": Column(float, Check.ge(0))})
+```
+
+Pydantic does the same for HTTP payloads, and FastAPI enforces it automatically:
+
+```python
+# Pydantic — validates a JSON request/response
+class PredictionResponse(BaseModel):
+    prediction: int
+    probability: float
+```
+
+You will not write validation code by hand in either case. Declare the shape,
+get enforcement and error messages for free.
+
+---
+
+## 9. One free thing worth knowing about
+
+FastAPI reads your function signatures and Pydantic models and automatically
+generates an interactive documentation page at `/docs`. It lists every endpoint
+and gives you a form to call each one live, from your browser.
+
+This matters more than it sounds. It means you can verify the entire backend —
+make a real prediction, inspect the response — **before any frontend code
+exists**. When something misbehaves later, `/docs` tells you immediately whether
+the problem is in Python or in React, which is most of the work of debugging a
+web application.
+
+---
+
+## 10. What running the system looks like
+
+### Terminal only (unchanged)
+
+One process, starts and finishes. This is your existing workflow and it is not
+going away.
+
+| What | Why |
+| --- | --- |
+| MLflow server | Receives runs, metrics, artifacts, models |
+| `make pipeline` | Runs, writes, exits |
+
+### Full application
+
+Three processes, all staying up. `docker compose` (phase 5) will start them
+together.
+
+| Process | Port | Role |
+| --- | --- | --- |
+| MLflow server | 5000 | Stores runs and serves the Model Registry |
+| FastAPI (uvicorn) | 8000 | Loads the model, answers requests |
+| Vite dev server | 5173 | Serves the React page to your browser |
+
+You open `http://localhost:5173`. That page then calls
+`http://localhost:8000/api/...` behind the scenes. You never open port 8000
+yourself, though you can — `/docs` lives there.
+
+> On macOS, port 5000 is often occupied by the AirPlay Receiver, which answers
+> with a `403` and makes MLflow look like it is running when it is not. Either
+> disable AirPlay Receiver in System Settings or use a different port and set
+> `MLFLOW_TRACKING_URI` accordingly.
+
+---
+
+## 11. What does not change
+
+Worth being explicit, because this is the common worry:
+
+- **`make pipeline` works exactly as before.** The CLI is untouched.
+- **`cfg/config.yaml` is still the only place** you configure data and models.
+- **Your pipelines, schemas, and tests are unchanged.** The API only *reads* what
+  training produces.
+- **You are not obliged to use the API.** The template remains a perfectly good
+  batch DS project if you never start the server.
+
+The API is strictly additive: a second door into the same house, not a
+renovation of the rooms.
+
+---
+
+## 12. Reading the system when something breaks
+
+Because there are now several processes, the useful first question is *which
+layer failed*. This table is the fastest way to narrow it down.
+
+| Symptom | Most likely layer | First thing to check |
+| --- | --- | --- |
+| Page loads but every panel is empty | API not running | Open `http://localhost:8000/docs` |
+| Predictions return `503` | No trained model | Run `make pipeline` |
+| Predictions return `422` | Input shape mismatch | Compare the form against `/api/predict/schema` |
+| API fails at startup | MLflow unreachable | Is the MLflow server up? Is `MLFLOW_TRACKING_URI` right? |
+| `/docs` works but the page does not | Frontend or CORS | Browser developer console, Network tab |
+| Metrics dashboard empty, predictions fine | No runs logged | Open the MLflow UI directly |
+
+The general principle: **test from the inside out.** MLflow UI first, then
+`/docs`, then the React page. Whichever is the innermost broken layer is where
+the problem is.
+
+---
+
+## Related documents
+
+- [`README.md`](../README.md) — installation, configuration, and commands
+- `cfg/config.yaml` — dataset, model, and tracking configuration

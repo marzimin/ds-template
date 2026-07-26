@@ -15,6 +15,10 @@ outputs/          ← generated plots and reports
 backend/          ← Python code (pipelines, ML, API)
 ```
 
+New to web application structure? [`docs/architecture.md`](docs/architecture.md)
+explains how the terminal workflow and the browser interface relate, and
+introduces the backend/frontend concepts in data science terms.
+
 ## Installation
 
 After creating a new repository using **"Use this template"**, follow these steps:
