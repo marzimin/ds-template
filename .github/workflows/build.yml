@@ -74,6 +74,10 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
+          # The backend image is built from the repository root so that cfg/
+          # is inside the build context alongside backend/.
+          context: .
+          file: backend/Dockerfile
           build-args: |
             VERSION=${{needs.tag.outputs.tag}}
           platforms: linux/amd64

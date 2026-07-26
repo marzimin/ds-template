@@ -51,11 +51,19 @@ htmlcov/
 test-output.xml
 
 # --- Images generated during runs ---
-*.png
+# Scoped to where runs actually write. A bare `*.png` also swallows frontend
+# assets such as frontend/public/logo.png, with no error to tell you.
+/outputs/**/*.png
+/data/**/*.png
 
 # --- Tools / IDEs ---
 .idea/
-.vscode/
+# Ignore .vscode contents but keep settings.json tracked: it points editors at
+# backend/.venv, which is not guessable from the repository root. This must use
+# .vscode/* rather than .vscode/ — git does not descend into an excluded
+# directory, so a negation inside one never applies.
+.vscode/*
+!.vscode/settings.json
 *~
 *.swp
 *.swo
@@ -73,7 +81,17 @@ test-output.xml
 docs/_build/
 docs/_autoapi/
 
+# --- Node / frontend ---
+node_modules/
+frontend/dist/
+frontend/.vite/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
 # --- Data ---
+# data/ and outputs/ live at the repository root, alongside cfg/, because they
+# are the user-configurable surface of the template rather than backend code.
 # Ignore all data files; track only directory structure via .gitkeep.
 # data/raw/       — drop raw input files here before running the pipeline
 # data/processed/ — prepared (*_prepared.csv) and trained (*_trained.csv) outputs
@@ -84,15 +102,19 @@ data/**
 !data/processed/.gitkeep
 
 # --- Notebooks (keep structure, ignore contents except tracked files) ---
-notebooks/**
-!notebooks/example_notebook.ipynb
+backend/notebooks/**
+!backend/notebooks/example_notebook.ipynb
 
 # --- ML artefacts / outputs ---
-artifacts/
-outputs/
-models/
-checkpoints/
-runs/
+# Anchored with a leading slash so they match only at the repository root.
+# Unanchored, these match at any depth and silently ignore ordinary source
+# directories — frontend/src/models/, frontend/src/pages/runs/, and
+# frontend/src/lib/artifacts/ would all vanish without a warning.
+/artifacts/
+/outputs/
+/models/
+/checkpoints/
+/runs/
 
 # --- Model files (binary, large) ---
 *.ckpt
@@ -114,10 +136,6 @@ mlruns/
 mlartifacts/
 mlflow.db
 mlruns.db
-
-# --- Plots & reports ---
-plots/*
-reports/*
 
 # --- Local databases ---
 *.sqlite
