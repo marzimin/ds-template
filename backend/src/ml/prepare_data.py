@@ -1,3 +1,5 @@
+"""Loading raw data, applying transformations, and persisting the result."""
+
 import logging
 
 import pandas as pd
@@ -6,10 +8,6 @@ from src.config import read_config
 from src.ml.io import read_data, write_data
 from src.ml.pipeline import Pipeline
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 
@@ -60,7 +58,3 @@ class PrepareDataPipeline(Pipeline):
     def _func4(df: pd.DataFrame) -> pd.DataFrame:
         """Placeholder transform step 4 — replace with your logic."""
         return df
-
-
-if __name__ == "__main__":
-    PrepareDataPipeline().run()

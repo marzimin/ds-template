@@ -1,6 +1,7 @@
+"""Exploratory plots, saved locally and logged to MLflow."""
+
 import logging
 import os
-from contextlib import nullcontext
 from pathlib import Path
 
 import mlflow
@@ -17,13 +18,9 @@ from src.ml.plots import (
     _plot_histogram,
     _plot_missing_values,
 )
-from src.ml.tracking import setup_mlflow
+from src.ml.tracking import active_or_new_run, setup_mlflow
 from src.schemas import normalise_column_name
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 
@@ -105,8 +102,7 @@ class EDAPipeline(Pipeline):
             logger.info("Saved summary plot: %s", path.name)
 
         # Log all artifacts to MLflow; fall back to a standalone run if needed
-        ctx = nullcontext() if mlflow.active_run() else mlflow.start_run(run_name="EDA")
-        with ctx:
+        with active_or_new_run("EDA"):
             for path in artifacts:
                 mlflow.log_artifact(str(path), artifact_path=eda_dir.name)
             logger.info("Logged %d EDA artifacts to MLflow.", len(artifacts))

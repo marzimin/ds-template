@@ -1,7 +1,8 @@
+"""Model training, evaluation, and MLflow logging."""
+
 import importlib
 import logging
 import os
-from contextlib import nullcontext
 from typing import Optional, cast
 
 import matplotlib.pyplot as plt
@@ -25,13 +26,14 @@ from sklearn.model_selection import train_test_split
 from src.config import read_config, resolve_project_path
 from src.ml.io import read_data, write_data
 from src.ml.pipeline import Pipeline
-from src.ml.tracking import build_signature, log_model, setup_mlflow
+from src.ml.tracking import (
+    active_or_new_run,
+    build_signature,
+    log_model,
+    setup_mlflow,
+)
 from src.schemas import normalise_column_name
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 
@@ -101,13 +103,7 @@ class TrainModelPipeline(Pipeline):
             X_test, y_test
         )
 
-        # if an active run already exists, wrap with a no-op context; otherwise start a new one.
-        ctx = (
-            nullcontext()
-            if mlflow.active_run()
-            else mlflow.start_run(run_name=self.run_name)
-        )
-        with ctx:
+        with active_or_new_run(self.run_name):
             mlflow.log_param("model_name", self.model_name)
             if self.model_params:
                 mlflow.log_params(self.model_params)

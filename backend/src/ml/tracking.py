@@ -16,8 +16,9 @@ features a prediction request needs.
 import importlib
 import logging
 import os
+from contextlib import nullcontext
 from types import ModuleType
-from typing import Any
+from typing import Any, ContextManager
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -82,6 +83,24 @@ def setup_mlflow() -> str:
             "The template defaults to a server-backed tracking URI so runs, "
             "metrics, models, and artifacts are captured consistently."
         ) from exc
+
+
+def active_or_new_run(run_name: str) -> ContextManager[Any]:
+    """Return a context manager that reuses the active run, or starts one.
+
+    Pipeline steps are normally called inside a run the CLI already opened, but
+    each is also usable on its own. Reusing the active run keeps every step's
+    metrics and artifacts on a single run rather than scattering them.
+
+    Args:
+        run_name: Name for the run, used only when starting a new one.
+
+    Returns:
+        A no-op context manager if a run is already active, otherwise a new run.
+    """
+    if mlflow.active_run():
+        return nullcontext()
+    return mlflow.start_run(run_name=run_name)
 
 
 def registered_model_name(config: dict[str, Any]) -> str:

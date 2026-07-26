@@ -16,6 +16,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.api.models import ErrorResponse
 from src.api.routers import health, predict, runs
 from src.config import project_name, read_config
 from src.ml.inference import ModelNotAvailableError, get_cached_model
@@ -69,6 +70,13 @@ def create_app() -> FastAPI:
         ),
         version="0.1.0",
         lifespan=lifespan,
+        # Declared once for every route so the OpenAPI schema — and the
+        # TypeScript types generated from it — describe failures, not just the
+        # happy path.
+        responses={
+            422: {"model": ErrorResponse, "description": "Invalid request"},
+            503: {"model": ErrorResponse, "description": "No model available"},
+        },
     )
 
     app.add_middleware(

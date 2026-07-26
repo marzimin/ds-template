@@ -1,3 +1,5 @@
+"""Shared abstractions for pipeline steps."""
+
 from abc import ABC, abstractmethod
 
 

@@ -103,13 +103,6 @@ class ModelReloadResponse(BaseModel):
     )
 
 
-class MetricSummary(BaseModel):
-    """A single logged metric."""
-
-    key: str
-    value: float
-
-
 class RunSummary(BaseModel):
     """One MLflow run, as listed in a dashboard."""
 

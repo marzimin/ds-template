@@ -1,9 +1,16 @@
+"""Command line entry point for the data preparation, EDA, and training steps.
+
+Run with ``uv run pipeline`` (or ``make pipeline``). This is one of the two
+places that configure logging; library modules only ever take a logger.
+"""
+
 import argparse
 import logging
 
 import mlflow
 from mlflow.exceptions import MlflowException
 
+from src.config import project_name
 from src.ml.eda import EDAPipeline
 from src.ml.prepare_data import PrepareDataPipeline
 from src.ml.tracking import setup_mlflow
@@ -13,12 +20,17 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
-logger = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
     """Parse CLI arguments for running pipelines."""
-    parser = argparse.ArgumentParser(description="Repo Template")
+    parser = argparse.ArgumentParser(
+        prog="pipeline",
+        description=(
+            f"Run the {project_name()} ML pipeline. With no step flag, all "
+            "three steps run in order: prepare-data, EDA, train-model."
+        ),
+    )
     parser.add_argument(
         "--prepare-data",
         action="store_true",
@@ -44,7 +56,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Entry point for running one or both pipelines."""
+    """Run one pipeline step, or all three in order when no flag is given."""
     args = parse_args()
 
     run_name = args.run_name or "Default_Run_Name"
