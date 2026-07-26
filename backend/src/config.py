@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 logger = logging.getLogger(__name__)
 
 DEFAULT_PROJECT_NAME = "ds-template"
+DEFAULT_TARGET_COLUMN = "TARGET"
 
 
 def _resolve_project_root() -> Path:
@@ -71,6 +72,21 @@ def read_config() -> dict[str, Any]:
     with open(config_file_path, "r", encoding="utf-8") as file:
         config_data = yaml.safe_load(file)
     return cast(dict[str, Any], config_data)
+
+
+def target_column(config: dict[str, Any]) -> str:
+    """Return the configured target column name.
+
+    A single accessor so the fallback lives in one place rather than being
+    repeated at each call site, where the copies can drift apart.
+
+    Args:
+        config: Parsed ``cfg/config.yaml`` contents.
+
+    Returns:
+        The target column name, before normalisation.
+    """
+    return str(config.get("target_column", DEFAULT_TARGET_COLUMN))
 
 
 def project_name() -> str:

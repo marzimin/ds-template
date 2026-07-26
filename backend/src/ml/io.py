@@ -11,7 +11,7 @@ from typing import Any, TypedDict, cast
 import pandas as pd
 from pandera.errors import SchemaError
 
-from src.config import read_config, resolve_project_path
+from src.config import read_config, resolve_project_path, target_column
 from src.schemas import build_schemas, normalise_column_name
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ class ColumnInfo(TypedDict):
 def get_schema(schema_name: str, config: dict[str, Any]) -> Any:
     """Return a configured Pandera schema by name."""
     return build_schemas(
-        target_column=str(config.get("target_column", "TARGET")),
+        target_column=target_column(config),
         target_values=cast(list[object] | None, config.get("target_values")),
     )[schema_name]
 

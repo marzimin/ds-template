@@ -25,5 +25,12 @@ model_params:
   max_depth: 10
   # class_weights: "balanced"
 
-stratify: false
+# Train/test split.
+#   test_size    — fraction held out for evaluation
+#   random_state — fixed so runs are reproducible; change to reshuffle
+#   stratify     — preserve class balance across the split. Recommended for
+#                  imbalanced targets; left off here so the demo split stays
+#                  a plain random one.
 test_size: 0.2
+random_state: 42
+stratify: false

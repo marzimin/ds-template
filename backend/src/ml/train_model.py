@@ -23,7 +23,7 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import train_test_split
 
-from src.config import read_config, resolve_project_path
+from src.config import read_config, resolve_project_path, target_column
 from src.ml.io import read_data, write_data
 from src.ml.pipeline import Pipeline
 from src.ml.tracking import (
@@ -78,18 +78,18 @@ class TrainModelPipeline(Pipeline):
         setup_mlflow()
 
         input_file = self.config["data"]["input_file"]
-        target_col = normalise_column_name(
-            str(self.config.get("target_column", "TARGET"))
-        )
+        target_col = normalise_column_name(target_column(self.config))
 
         df = read_data(
             file_name=input_file, suffix="prepared", schema_obj="prepared_data"
         )
         X, y = self._validate_training_data(df, target_col)
 
+        # Fallbacks match the values shipped in cfg/config.yaml, so deleting a
+        # key does not silently change behaviour.
         test_size = float(self.config.get("test_size", 0.2))
         random_state = int(self.config.get("random_state", 42))
-        stratify = y if bool(self.config.get("stratify", True)) else None
+        stratify = y if bool(self.config.get("stratify", False)) else None
 
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=test_size, random_state=random_state, stratify=stratify

@@ -5,7 +5,7 @@ the box. It is wired into ``setup.sh`` and the ``Dockerfile``; you can also run
 it manually with ``uv run python scripts/generate_sample_data.py``.
 
 To bring your own data instead, drop a CSV into ``data/raw/`` named to match
-``cfg/config.yaml:data.input_file`` and update ``src/utils/schemas.py``. The
+``cfg/config.yaml:data.input_file`` and update ``src/schemas.py``. The
 column names below are left in their original (spaced, lower-case) form on
 purpose to demonstrate the column normalisation applied on read.
 """

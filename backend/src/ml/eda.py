@@ -6,7 +6,7 @@ from pathlib import Path
 
 import mlflow
 
-from src.config import read_config, resolve_project_path
+from src.config import read_config, resolve_project_path, target_column
 from src.ml.io import _detect_feature_types, read_data
 from src.ml.pipeline import Pipeline
 from src.ml.plots import (
@@ -56,9 +56,7 @@ class EDAPipeline(Pipeline):
         )
         logger.info("Prepared dataset loaded. Shape: %s", df.shape)
 
-        target_col = normalise_column_name(
-            str(self.config.get("target_column", "TARGET"))
-        )
+        target_col = normalise_column_name(target_column(self.config))
         if target_col not in df.columns:
             raise KeyError(
                 f"Configured target_column {target_col!r} was not found in prepared "

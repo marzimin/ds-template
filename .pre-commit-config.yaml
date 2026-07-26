@@ -32,7 +32,7 @@ repos:
 
   # Hooks run from the repository root, so mypy is pointed at the backend
   # project explicitly: its config lives in backend/pyproject.toml and its
-  # imports are rooted at backend/ (`from src.utils...`).
+  # imports are rooted at backend/ (`from src.ml...`).
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.19.1
     hooks:
