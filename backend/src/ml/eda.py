@@ -18,6 +18,7 @@ from src.ml.plots import (
     _plot_histogram,
     _plot_missing_values,
 )
+from src.ml.task import detect_task
 from src.ml.tracking import active_or_new_run, setup_mlflow
 from src.schemas import normalise_column_name
 
@@ -90,10 +91,20 @@ class EDAPipeline(Pipeline):
             artifacts.append(path)
             logger.info("Saved feature-vs-target plot: %s", path.name)
 
-        # Dataset-level summary plots (target included for correlation insight)
+        # Dataset-level summary plots (target included for correlation insight).
+        # The target gets a class-balance bar chart or a histogram depending on
+        # the task: counting the occurrences of a continuous target produces one
+        # bar per row, which is noise rather than a plot.
+        task = detect_task(df[target_col], self.config.get("task"))
+        target_plot = (
+            _plot_class_distribution(df, target_col, eda_dir)
+            if task.is_classification
+            else _plot_histogram(df, target_col, 0.0, eda_dir)
+        )
+
         for path in [
             _plot_correlation_heatmap(df, eda_dir),
-            _plot_class_distribution(df, target_col, eda_dir),
+            target_plot,
             _plot_missing_values(df, eda_dir),
         ]:
             artifacts.append(path)

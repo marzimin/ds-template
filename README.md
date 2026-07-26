@@ -333,9 +333,60 @@ The experiment and registered model names default to `[project].name` in
 `backend/pyproject.toml`, so renaming the project renames them too. Override
 either via the `tracking` block in `cfg/config.yaml`.
 
-Note that the default pipeline assumes **binary classification** throughout its
-metrics, plots, and schemas. Swapping estimators is a config change; moving to
-regression or multiclass means editing `TrainModelPipeline` and `schemas.py`.
+---
+
+### What kind of problem is this? Classification or regression
+
+The template handles **binary classification, multiclass classification, and
+regression**. You do not normally have to say which — it reads the target column
+and works it out, then logs the decision on every run:
+
+```text
+Task inferred as regression from the target (1067 distinct values, dtype float64).
+Set `task:` in cfg/config.yaml to override.
+```
+
+That one decision drives everything downstream:
+
+| | Metrics | Evaluation plots |
+| --- | --- | --- |
+| **Binary classification** | accuracy, precision, recall, f1 | confusion matrix, classification report, ROC curve, precision-recall curve |
+| **Multiclass classification** | accuracy, macro precision / recall / f1 | confusion matrix, classification report |
+| **Regression** | RMSE, MAE, R² | predicted-vs-actual, residuals |
+
+Two details worth knowing:
+
+**Multiclass gets no ROC or precision-recall curve.** Those curves are defined
+for two classes. Drawing one for three would quietly give you a one-vs-rest
+curve against an arbitrary class — a plot that looks perfectly reasonable and
+tells you something you did not ask. The template omits it rather than mislead.
+
+**Macro averaging for multiclass** weights every class equally, so a large class
+cannot hide poor performance on a small one.
+
+#### When inference guesses wrong
+
+The rules: a boolean, text, or categorical target is always classes. A numeric
+target is measurements if it has fractional values, or more than 20 distinct
+whole numbers; otherwise it is classes.
+
+That gets the common cases right and will occasionally be wrong — integer counts
+you genuinely want to regress onto look exactly like class labels. Set `task:`
+in `cfg/config.yaml` when it does:
+
+```yaml
+task: regression       # or: classification, or: auto (the default)
+target_values: null    # a continuous target has no fixed value set
+```
+
+Setting `task` explicitly never hurts. If you already know what you are
+modelling, saying so is clearer than relying on a heuristic.
+
+#### Adding a metric
+
+`compute_metrics` in `backend/src/ml/task.py` returns a plain dictionary, and
+everything downstream follows it. Add an entry and it is logged to MLflow *and*
+appears as a column in the dashboard — no other file changes.
 
 ---
 
@@ -349,22 +400,30 @@ any time with:
 cd backend && uv run python scripts/generate_sample_data.py
 ```
 
-To use your own data, drop a CSV into `data/raw/` (at the repository root) named
-to match `data.input_file` in `cfg/config.yaml`, then update the schemas in
-`backend/src/schemas.py` to describe your columns.
+### Using your own data
 
-The starter training pipeline intentionally assumes:
+Two steps, and neither requires editing Python:
 
-- A binary classification target with values listed in `target_values`
-- A target column named by `target_column`; names are normalised on read, so
-  `target`, `Target`, and `TARGET` all become `TARGET`
-- Numeric feature columns only
-- No missing feature or target values by training time
+1. Drop a CSV into `data/raw/` (at the repository root).
+2. Point `data.input_file` and `target_column` at it in `cfg/config.yaml`, and
+   set `target_values` to your class labels — or `null` for regression.
 
-If your project has categoricals, datetimes, nulls, multiclass labels, or a
-regression target, update `PrepareDataPipeline`, `TrainModelPipeline`, and the
-schemas before training. The template raises explicit errors for these cases so
-you do not have to interpret lower-level scikit-learn tracebacks.
+Then `make pipeline`. Column names are normalised on read, so `mean radius`,
+`Mean Radius`, and `MEAN_RADIUS` all become `MEAN_RADIUS`; `target_column` is
+matched after that.
+
+`backend/src/schemas.py` validates only the target by default, so it does not
+need touching. Add checks there for the columns whose silent corruption would
+ruin a model — an example is in the module docstring.
+
+The pipeline still assumes two things it will not do for you:
+
+- **Numeric features only.** Encode or drop categoricals in
+  `PrepareDataPipeline`.
+- **No missing values by training time.** Impute or drop them in the same place.
+
+Both raise a clear error naming the offending columns, rather than letting
+scikit-learn fail with something harder to read.
 
 ---
 
@@ -417,6 +476,7 @@ backend/
     │   ├── prepare_data.py # Data loading and transformations
     │   ├── eda.py          # Exploratory plots logged to MLflow
     │   ├── train_model.py  # Model training with MLflow tracking
+    │   ├── task.py         # Classification vs regression, and its metrics
     │   ├── inference.py    # Loading a registered model and predicting
     │   ├── io.py           # CSV read/write with schema validation
     │   ├── plots.py        # Matplotlib/seaborn plotting helpers
@@ -503,16 +563,27 @@ make test-frontend     # vitest
 
 ## Schema checks
 
-- Schema definitions live in `backend/src/schemas.py`
+Schemas live in `backend/src/schemas.py` and are applied automatically whenever
+the pipeline reads or writes a CSV, so a corrupted intermediate file is caught
+at the boundary rather than three steps later.
 
-When data is read or written via the utility functions:
+They validate in **non-strict** mode: only the columns you declare are checked,
+and anything else passes through untouched.
 
-- Column presence is validated
-- Basic sanity checks are applied (e.g. value ranges)
+**Out of the box only the target column is checked**, which is what lets any
+dataset run without editing this file. Naming specific feature columns here
+would make the template fail on the first run with anyone else's data.
 
-This ensures data consistency across pipeline steps.
+Add checks for the columns whose silent corruption would ruin a model — a
+negative age, a probability above 1, a category that should never appear:
 
-Schemas validate in **non-strict** mode: only the columns you declare are
-checked, and any extra columns pass through. The template declares just a couple
-of representative columns from the demo dataset — extend or replace them with
-your own when you swap in your data.
+```python
+FEATURE_COLUMNS = {
+    "MEAN_RADIUS": Column(float, checks=Check.ge(0)),
+    "AGE": Column(int, checks=Check.in_range(0, 120)),
+}
+```
+
+The target's permitted values come from `target_values` in `cfg/config.yaml`.
+Leave it `null` for regression: a continuous target has no fixed value set, and
+checking one would reject every valid row.

@@ -4,7 +4,23 @@ data:
   input_file: "input_data.csv"
 
 target_column: "TARGET"
-target_values: [0, 1] # default pipeline metrics expect binary classification
+
+# What kind of problem this is. Decides which metrics are computed, which plots
+# are produced, and whether the target is checked against a fixed set of values.
+#   auto            infer from the target column; the decision is logged each run
+#   classification  force classification (binary or multiclass follows the data)
+#   regression      force regression
+#
+# Inference reads a target as classes when it is boolean, non-numeric, or a
+# whole number with few distinct values; as measurements otherwise. Override
+# here when your data is unusual — for example integer counts you want to
+# regress onto, which would otherwise look like class labels.
+task: auto
+
+# Permitted target values, for classification only. Catches stray labels early.
+# Leave as null for regression: a continuous target has no fixed value set, and
+# checking one would reject every valid row.
+target_values: [0, 1]
 
 # MLflow experiment and Model Registry names. Both default to the project name
 # in backend/pyproject.toml, so renaming the project renames them too. Set
@@ -13,11 +29,15 @@ tracking:
   experiment_name: null
   registered_model_name: null
 
+# Any class implementing the scikit-learn fit/predict API can go here; the
+# matching MLflow flavour is selected automatically from the import path.
 model_registry:
   xgboost: "xgboost.XGBClassifier"
   xgb: "xgboost.XGBClassifier"
   random_forest: "sklearn.ensemble.RandomForestClassifier"
   rf: "sklearn.ensemble.RandomForestClassifier"
+  # Regression example — switch model_name to this and set target_values: null
+  rf_regressor: "sklearn.ensemble.RandomForestRegressor"
 
 model_name: "xgboost" # choose from model_registry
 model_params:
@@ -29,8 +49,7 @@ model_params:
 #   test_size    — fraction held out for evaluation
 #   random_state — fixed so runs are reproducible; change to reshuffle
 #   stratify     — preserve class balance across the split. Recommended for
-#                  imbalanced targets; left off here so the demo split stays
-#                  a plain random one.
+#                  imbalanced classification targets; ignored for regression.
 test_size: 0.2
 random_state: 42
 stratify: false
