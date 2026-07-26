@@ -146,3 +146,80 @@ def test_task_can_be_forced_against_inference():
 
     pipeline._validate_training_data(df, "TARGET")
     assert pipeline.task is TaskType.REGRESSION
+
+
+def test_regressor_on_a_classification_target_is_rejected_early():
+    """A mismatched estimator fails at build time with a message that helps.
+
+    Left unchecked, a regressor fits class labels without complaint and only
+    fails later inside the metrics, where scikit-learn reports "a mix of binary
+    and continuous targets" — true, but it never names the actual mistake.
+    """
+    df, _, *_ = CASES["binary"]
+    config = _config("sklearn.ensemble.RandomForestRegressor", [0, 1])
+    pipeline = _pipeline(df, config)
+    features, target = pipeline._validate_training_data(df, "TARGET")
+
+    with pytest.raises(ValueError, match="is a regressor.*needs a classifier"):
+        pipeline.train(features, target)
+
+
+def test_classifier_on_a_regression_target_is_rejected_early():
+    """The mirror case, caught by the same guard."""
+    df, _, *_ = CASES["regression"]
+    config = _config("sklearn.ensemble.RandomForestClassifier")
+    pipeline = _pipeline(df, config)
+    features, target = pipeline._validate_training_data(df, "TARGET")
+
+    with pytest.raises(ValueError, match="is a classifier.*needs a regressor"):
+        pipeline.train(features, target)
+
+
+def test_stratify_is_ignored_for_regression(tmp_path, monkeypatch):
+    """Stratifying a continuous target would fail; the setting is dropped.
+
+    Almost every value in a continuous target is unique, so scikit-learn would
+    refuse with "the least populated class has only 1 member".
+    """
+    monkeypatch.setenv("LOCAL_PLOTS_PATH", str(tmp_path / "plots"))
+    monkeypatch.setenv("LOCAL_REPORTS_PATH", str(tmp_path / "reports"))
+
+    df, config, *_ = CASES["regression"]
+    stratified = {**config, "stratify": True}
+    pipeline = _pipeline(df, stratified)
+
+    with (
+        patch("src.ml.train_model.setup_mlflow"),
+        patch("src.ml.train_model.read_data", return_value=df),
+        patch("src.ml.train_model.write_data"),
+        patch("src.ml.train_model.log_model"),
+        patch("src.ml.train_model.active_or_new_run"),
+        patch("mlflow.log_param"),
+        patch("mlflow.log_params"),
+        patch("mlflow.log_metric"),
+        patch("mlflow.log_artifact"),
+    ):
+        pipeline.run()  # would raise if stratify reached train_test_split
+
+    assert pipeline.task is TaskType.REGRESSION
+
+
+def test_per_model_params_select_the_matching_block():
+    """model_params nested by model name lets several models coexist."""
+    df, _, *_ = CASES["binary"]
+    config = _config("sklearn.ensemble.RandomForestClassifier", [0, 1])
+    config["model_params"] = {
+        "m": {"n_estimators": 7},
+        "other_model": {"n_estimators": 999},
+    }
+
+    assert _pipeline(df, config).model_params == {"n_estimators": 7}
+
+
+def test_flat_model_params_still_apply_to_any_model():
+    """The simpler flat form keeps working for single-model projects."""
+    df, _, *_ = CASES["binary"]
+    config = _config("sklearn.ensemble.RandomForestClassifier", [0, 1])
+    config["model_params"] = {"n_estimators": 7}
+
+    assert _pipeline(df, config).model_params == {"n_estimators": 7}

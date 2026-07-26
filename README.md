@@ -86,7 +86,7 @@ This will:
 - Install all project dependencies (including dev extras)
 - Install pre-commit hooks
 - Create `.env` from `.env.example` if it does not already exist
-- Generate the demo dataset into `data/raw/input_data.csv`
+- Generate the demo dataset into `data/raw/breast_cancer.csv`
 
 Activate the environment manually later with:
 
@@ -301,19 +301,45 @@ training time:
 
 ```yaml
 model_registry:
+  # Classifiers
   xgboost: "xgboost.XGBClassifier"
   random_forest: "sklearn.ensemble.RandomForestClassifier"
-  lightgbm: "lightgbm.LGBMClassifier"   # add your own
+  lightgbm: "lightgbm.LGBMClassifier"        # add your own
+  # Regressors
+  rf_regressor: "sklearn.ensemble.RandomForestRegressor"
+  linear_regression: "sklearn.linear_model.LinearRegression"
 
-model_name: "xgboost"                   # pick one from the registry
+model_name: "xgboost"                        # pick one from the registry
 model_params:
-  n_estimators: 50
-  max_depth: 10
+  xgboost:                                   # nested per model, see below
+    n_estimators: 50
+    max_depth: 10
 ```
+
+Use a **classifier** for class labels and a **regressor** for continuous
+targets. Pairing them the wrong way round is caught before training with an
+error naming both.
 
 To use a different estimator, add a line to `model_registry` and point
 `model_name` at it — no Python changes needed. Any class implementing the
-scikit-learn `fit`/`predict` API works.
+scikit-learn `fit`/`predict` API works, classifier or regressor.
+
+**`model_params` accepts two shapes.** Nested by model name keeps settings for
+several models side by side, so switching is a one-word change to `model_name`:
+
+```yaml
+model_params:
+  xgboost:
+    n_estimators: 50
+    max_depth: 10
+  rf_regressor:
+    n_estimators: 200
+```
+
+A flat mapping also works and is passed to whichever model is selected — simpler,
+but then every model must accept the same arguments. Keys have to be real
+constructor arguments for that estimator: `LinearRegression` has no
+`n_estimators`.
 
 The correct MLflow flavor is selected automatically from the root module of the
 import path (`xgboost.*` → `mlflow.xgboost`, `lightgbm.*` → `mlflow.lightgbm`,
@@ -382,6 +408,27 @@ target_values: null    # a continuous target has no fixed value set
 Setting `task` explicitly never hurts. If you already know what you are
 modelling, saying so is clearer than relying on a heuristic.
 
+#### What changes downstream when the task changes
+
+You set `task` (or let it infer) in one place. Here is what each pipeline step
+does differently as a result — useful when reading the code or extending it:
+
+| Step | Changes with the task? | What it does |
+| --- | --- | --- |
+| `prepare_data.py` | **No** | Loads, transforms, and writes the CSV. Its schema check validates the target's values only when `target_values` is set, which is what lets the same code path serve a continuous target. Your own transforms go here. |
+| `eda.py` | **Slightly** | Feature plots are identical. The target gets a class-balance bar chart for classification and a histogram for regression — counting occurrences of a continuous target would draw one bar per row. |
+| `train_model.py` | **Yes** | Picks the metrics and evaluation plots, rejects an estimator whose family does not match the target, and ignores `stratify` for regression, where there are no classes to balance. |
+
+Two guards exist because their absence was confusing:
+
+- **Mismatched estimator.** A regressor on class labels trains without
+  complaint and only fails later, deep inside scikit-learn's metrics, with a
+  message that never names the real mistake. The template now stops at model
+  construction and tells you which model, which task, and both ways to fix it.
+- **`stratify` on regression.** Almost every value in a continuous target is
+  unique, so scikit-learn would refuse with "the least populated class has only
+  1 member". The setting is ignored, with a log line saying so.
+
 #### Adding a metric
 
 `compute_metrics` in `backend/src/ml/task.py` returns a plain dictionary, and
@@ -392,13 +439,28 @@ appears as a column in the dashboard — no other file changes.
 
 ### Sample data
 
-The template ships with the **Breast Cancer Wisconsin** dataset as a runnable
-demo. `backend/setup.sh` generates it automatically; you can regenerate it at
-any time with:
+Three datasets ship with the template, one per supported task type, so you can
+try each without finding your own data first. `backend/setup.sh` writes them all
+into `data/raw/`; regenerate at any time with `make sample-data`.
 
-```bash
-cd backend && uv run python scripts/generate_sample_data.py
-```
+| File in `data/raw/` | Task | Shape | Config to select it |
+| --- | --- | --- | --- |
+| `breast_cancer.csv` | binary classification | 569 × 31 | *the shipped default* |
+| `iris.csv` | multiclass classification | 150 × 5 | `target_values: [0, 1, 2]`, `model_name: "random_forest"` |
+| `california_housing.csv` | regression | 20,640 × 9 | `target_values: null`, `model_name: "rf_regressor"` |
+
+**Only the file named by `data.input_file` is read.** The other two sit in
+`data/raw/` doing nothing until you point the config at one. Set `input_file`,
+`target_values`, and `model_name` from the table — `task` can stay `auto`, which
+infers correctly for all three. The same three settings are repeated as a
+copy-paste block in `cfg/config.yaml`.
+
+Every dataset names its target column `target`, so the shipped
+`target_column: "TARGET"` covers all three.
+
+> `california_housing.csv` is downloaded by scikit-learn rather than bundled
+> with it, and cached afterwards. On a machine without network access it is
+> skipped with a warning and the other two still generate.
 
 ### Using your own data
 

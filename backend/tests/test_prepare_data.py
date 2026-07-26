@@ -8,7 +8,7 @@ _MOCK_CONFIG = {
     "data": {
         "dir": "data/processed",
         "raw_dir": "data/raw",
-        "input_file": "input_data.csv",
+        "input_file": "breast_cancer.csv",
     }
 }
 
@@ -26,7 +26,7 @@ def test_run_pipeline():
         pipeline.run()
 
         mock_read.assert_called_once_with(
-            file_name="input_data.csv", raw=True, schema_obj="input_data"
+            file_name="breast_cancer.csv", raw=True, schema_obj="input_data"
         )
 
         mock_write.assert_called_once()
@@ -35,6 +35,6 @@ def test_run_pipeline():
 
         # _func1–_func4 are all no-ops: output should equal input unchanged
         pd.testing.assert_frame_equal(written_df, data)
-        assert kwargs["file_name"] == "input_data.csv"
+        assert kwargs["file_name"] == "breast_cancer.csv"
         assert kwargs["suffix"] == "prepared"
         assert kwargs["schema_obj"] == "prepared_data"

@@ -8,7 +8,7 @@ from typing import Any, Optional, cast
 
 import mlflow
 import pandas as pd
-from sklearn.base import BaseEstimator
+from sklearn.base import BaseEstimator, is_classifier, is_regressor
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 
@@ -89,7 +89,14 @@ class TrainModelPipeline(Pipeline):
         # key does not silently change behaviour.
         test_size = float(self.config.get("test_size", 0.2))
         random_state = int(self.config.get("random_state", 42))
-        stratify = y if bool(self.config.get("stratify", False)) else None
+
+        # Stratifying needs classes to balance. On a continuous target almost
+        # every value is unique, so scikit-learn would fail with "the least
+        # populated class has only 1 member" — ignore the setting instead.
+        stratify_requested = bool(self.config.get("stratify", False))
+        if stratify_requested and not self.task.is_classification:
+            logger.info("Ignoring stratify: it does not apply to %s.", self.task.value)
+        stratify = y if stratify_requested and self.task.is_classification else None
 
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=test_size, random_state=random_state, stratify=stratify
@@ -257,7 +264,38 @@ class TrainModelPipeline(Pipeline):
         model_cls: type[BaseEstimator] = getattr(
             importlib.import_module(module_name), class_name
         )
-        return model_cls(**self.model_params)
+        model = model_cls(**self.model_params)
+        self._check_model_suits_task(model)
+        return model
+
+    def _check_model_suits_task(self, model: BaseEstimator) -> None:
+        """Fail early when the estimator family does not match the target.
+
+        A regressor fitted on class labels trains without complaint and only
+        fails later, when scikit-learn reports "a mix of binary and continuous
+        targets" from inside the metrics — a message that never mentions the
+        actual mistake. Checking here names the model, the task, and both ways
+        to fix it.
+
+        Raises:
+            ValueError: If a classifier is paired with a regression target or a
+                regressor with a classification target.
+        """
+        wants_classifier = self.task.is_classification
+        if wants_classifier == is_classifier(model):
+            return
+        if not wants_classifier and is_regressor(model):
+            return
+
+        expected = "classifier" if wants_classifier else "regressor"
+        actual = "classifier" if is_classifier(model) else "regressor"
+        raise ValueError(
+            f"Model {self.model_name!r} ({self.class_path}) is a {actual}, but "
+            f"the target was read as {self.task.value}, which needs a "
+            f"{expected}. Either choose a {expected} from model_registry in "
+            "cfg/config.yaml, or set `task:` there if the target was read "
+            "wrongly."
+        )
 
     # Training artifacts
 

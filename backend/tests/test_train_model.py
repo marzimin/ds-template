@@ -24,7 +24,7 @@ _MOCK_CONFIG = {
     "data": {
         "dir": "data/processed",
         "raw_dir": "data/raw",
-        "input_file": "input_data.csv",
+        "input_file": "breast_cancer.csv",
     },
 }
 
@@ -86,7 +86,7 @@ def test_pipeline_run(pipeline, data):
         kwargs = mock_write.call_args.kwargs
 
         assert "PREDICTION" in written_df.columns
-        assert kwargs["file_name"] == "input_data.csv"
+        assert kwargs["file_name"] == "breast_cancer.csv"
         assert kwargs["suffix"] == "trained"
         assert kwargs["schema_obj"] == "output_data"
 

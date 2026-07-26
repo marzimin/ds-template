@@ -348,6 +348,28 @@ web dashboard with no other edit. It also made the training code shorter — the
 old fixed tuple was unpacked into eight named variables and reassembled into a
 list before logging.
 
+### What each pipeline step does differently
+
+| Step | Task-dependent? | Why |
+| --- | --- | --- |
+| `prepare_data.py` | No | Loading and transforming a table is the same work regardless. Its schema check skips target-value validation when `target_values` is null, which is all a continuous target needs. |
+| `eda.py` | One plot | The target gets a class-balance bar chart or a histogram. Counting occurrences of a continuous target draws one bar per row. |
+| `train_model.py` | Yes | Metrics, evaluation plots, estimator-family check, and whether `stratify` applies. |
+
+Two guards were added because their absence produced errors that pointed at the
+wrong thing:
+
+**A mismatched estimator is caught at construction.** A regressor fitted on
+class labels trains perfectly happily and only fails later, inside the metrics,
+where scikit-learn reports "a mix of binary and continuous targets" — accurate,
+but it never mentions that you picked the wrong kind of model. The template now
+stops earlier and names the model, the task, and both fixes.
+
+**`stratify` is ignored for regression.** Almost every value in a continuous
+target is unique, so scikit-learn refuses with "the least populated class has
+only 1 member". The setting is dropped with a log line rather than passed
+through.
+
 ### Where the template still says no
 
 Two omissions are deliberate rather than unfinished.

@@ -40,7 +40,7 @@ COPY cfg/ ${APP_HOME}/cfg/
 # Install the project package
 RUN uv sync --no-dev
 
-# Generate the demo dataset into ${APP_HOME}/data/raw. At runtime, pass
+# Generate the demo datasets into ${APP_HOME}/data/raw. At runtime, pass
 # MLFLOW_TRACKING_URI for a reachable MLflow server, for example
 # http://host.docker.internal:5000.
 RUN uv run python scripts/generate_sample_data.py
