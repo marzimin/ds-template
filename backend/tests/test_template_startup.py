@@ -12,7 +12,7 @@ def test_read_config_resolves_from_project_root(monkeypatch, tmp_path):
 
     config = read_config()
 
-    assert config["data"]["input_file"] == "input_data.csv"
+    assert config["data"]["input_file"] == "breast_cancer.csv"
 
 
 def test_main_rejects_multiple_step_flags():

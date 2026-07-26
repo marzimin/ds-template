@@ -8,20 +8,21 @@ from typing import Any, Optional, cast
 
 import mlflow
 import pandas as pd
-from sklearn.base import BaseEstimator
-from sklearn.metrics import (
-    accuracy_score,
-    classification_report,
-    f1_score,
-    precision_score,
-    recall_score,
-)
+from sklearn.base import BaseEstimator, is_classifier, is_regressor
+from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 
 from src.config import read_config, resolve_project_path, target_column
 from src.ml.io import read_data, write_data
 from src.ml.pipeline import Pipeline
-from src.ml.plots import _plot_confusion_matrix, _plot_pr_curve, _plot_roc_curve
+from src.ml.plots import (
+    _plot_confusion_matrix,
+    _plot_pr_curve,
+    _plot_predicted_vs_actual,
+    _plot_residuals,
+    _plot_roc_curve,
+)
+from src.ml.task import TaskType, class_labels, compute_metrics, detect_task
 from src.ml.tracking import (
     active_or_new_run,
     build_signature,
@@ -50,22 +51,51 @@ class TrainModelPipeline(Pipeline):
         if not self.config:
             raise ValueError("Configuration file is empty or not found.")
 
-        self.model_name = str(self.config.get("model_name", "xgboost")).lower()
-        raw_params = self.config.get("model_params", {}) or {}
-        if (
-            isinstance(raw_params, dict)
-            and self.model_name in raw_params
-            and isinstance(raw_params[self.model_name], dict)
-        ):
-            self.model_params = raw_params[self.model_name]
-        else:
-            self.model_params = raw_params
+        # No default model name. A hardcoded one drifts out of step with
+        # model_registry the moment a key is renamed, and then reports a model
+        # the user never chose.
+        configured_name = self.config.get("model_name")
+        if not configured_name:
+            raise ValueError(
+                "model_name is not set in cfg/config.yaml. Choose one of the "
+                f"keys under model_registry: "
+                f"{sorted(self.config.get('model_registry', {}))}."
+            )
+        self.model_name = str(configured_name).lower()
+        self.model_params = self._select_model_params()
         self.run_name = run_name or "Default_Run_Name"
         self.model: Optional[BaseEstimator] = None
-        self.class_labels: list[object] = []
+        # Resolved from the target in _validate_training_data. Defaults to
+        # binary so the attribute is always a valid TaskType.
+        self.task: TaskType = TaskType.BINARY
+        self.class_labels: list[Any] = []
         # Import path from model_registry; set by _build_model and used to pick
         # the matching MLflow flavor when logging.
         self.class_path: str = ""
+
+    def _select_model_params(self) -> dict[str, Any]:
+        """Return the hyperparameters for the selected model.
+
+        ``model_params`` accepts two shapes. Nested by model name lets settings
+        for several models sit side by side, so switching is a one-word change
+        to ``model_name``; a flat mapping applies to whichever model is chosen.
+
+        Returns:
+            Constructor arguments for the selected estimator.
+        """
+        params = self.config.get("model_params") or {}
+        if not isinstance(params, dict):
+            return {}
+
+        nested = params.get(self.model_name)
+        if isinstance(nested, dict):
+            return nested
+
+        # A flat mapping has no dict values; one that does is nested for other
+        # models, so this model simply has no parameters of its own.
+        if any(isinstance(value, dict) for value in params.values()):
+            return {}
+        return params
 
     def run(self) -> None:
         """Execute training and log metrics, model, and plots to MLflow."""
@@ -85,37 +115,36 @@ class TrainModelPipeline(Pipeline):
         # key does not silently change behaviour.
         test_size = float(self.config.get("test_size", 0.2))
         random_state = int(self.config.get("random_state", 42))
-        stratify = y if bool(self.config.get("stratify", False)) else None
+
+        # Stratifying needs classes to balance. On a continuous target almost
+        # every value is unique, so scikit-learn would fail with "the least
+        # populated class has only 1 member" — ignore the setting instead.
+        stratify_requested = bool(self.config.get("stratify", False))
+        if stratify_requested and not self.task.is_classification:
+            logger.info("Ignoring stratify: it does not apply to %s.", self.task.value)
+        stratify = y if stratify_requested and self.task.is_classification else None
 
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=test_size, random_state=random_state, stratify=stratify
         )
 
         self.train(X_train, y_train)
-        train_accuracy, train_precision, train_recall, train_f1_score = self.evaluate(
-            X_train, y_train
-        )
-        test_accuracy, test_precision, test_recall, test_f1_score = self.evaluate(
-            X_test, y_test
-        )
+        train_metrics = self.evaluate(X_train, y_train)
+        test_metrics = self.evaluate(X_test, y_test)
 
         with active_or_new_run(self.run_name):
             mlflow.log_param("model_name", self.model_name)
+            mlflow.log_param("task", self.task.value)
             if self.model_params:
                 mlflow.log_params(self.model_params)
 
-            # log metrics
-            metrics = [
-                ("accuracy", train_accuracy, test_accuracy),
-                ("precision", train_precision, test_precision),
-                ("recall", train_recall, test_recall),
-                ("f1_score", train_f1_score, test_f1_score),
-            ]
-            for name, train_val, test_val in metrics:
-                mlflow.log_metric(f"train_{name}", train_val)
-                logger.info(f"MODEL DRIFT: Train {name.capitalize()} = {train_val:.4f}")
-                mlflow.log_metric(f"test_{name}", test_val)
-                logger.info(f"MODEL DRIFT: Test {name.capitalize()} = {test_val:.4f}")
+            # Whatever the task produced gets logged; adding a metric in
+            # task.compute_metrics makes it appear here and in the dashboard
+            # with no further change.
+            for split, metrics in (("train", train_metrics), ("test", test_metrics)):
+                for name, value in metrics.items():
+                    mlflow.log_metric(f"{split}_{name}", value)
+                    logger.info("MODEL DRIFT: %s %s = %.4f", split, name, value)
 
             # Produce every artifact, then log them in one pass — the same
             # shape EDAPipeline uses.
@@ -158,17 +187,20 @@ class TrainModelPipeline(Pipeline):
         self.model = self._build_model()
         self.model.fit(features, target)
 
-    def evaluate(
-        self, features: pd.DataFrame, target: pd.Series
-    ) -> tuple[float, float, float, float]:
-        """Compute accuracy, precision, recall, and f1-score on the provided data.
+    def evaluate(self, features: pd.DataFrame, target: pd.Series) -> dict[str, float]:
+        """Compute the metrics appropriate to this task.
+
+        Returns a mapping rather than a fixed tuple so the metric set can differ
+        by task — accuracy and f1 for classification, RMSE and R² for
+        regression — without any caller changing shape. Everything returned is
+        logged to MLflow and rendered by the dashboard automatically.
 
         Args:
             features: Feature matrix for evaluation.
-            target: True labels for evaluation.
+            target: True targets for evaluation.
 
         Returns:
-            Accuracy as a float in [0, 1].
+            Metric name to value.
 
         Raises:
             RuntimeError: If the model has not been trained yet.
@@ -176,18 +208,9 @@ class TrainModelPipeline(Pipeline):
         logger.info("Evaluating the model.")
         if self.model is None:
             raise RuntimeError("Model has not been trained.")
-        y_pred = self.model.predict(features)
-        positive_label = self.class_labels[-1]
-        accuracy = float(accuracy_score(target, y_pred))
-        precision = float(
-            precision_score(target, y_pred, pos_label=positive_label, zero_division=0)
+        return compute_metrics(
+            self.task, target, self.model.predict(features), self.class_labels
         )
-        recall = float(
-            recall_score(target, y_pred, pos_label=positive_label, zero_division=0)
-        )
-        f1 = float(f1_score(target, y_pred, pos_label=positive_label, zero_division=0))
-
-        return accuracy, precision, recall, f1
 
     def _validate_training_data(
         self, df: pd.DataFrame, target_col: str
@@ -230,23 +253,14 @@ class TrainModelPipeline(Pipeline):
                 "target nulls in PrepareDataPipeline before training."
             )
 
-        observed_labels = target.drop_duplicates().tolist()
-        configured_labels = list(self.config.get("target_values") or [])
-        class_labels = configured_labels or observed_labels
-        if len(observed_labels) != 2:
-            raise ValueError(
-                "Default metrics and plots are configured for binary "
-                f"classification, but target_column {target_col!r} has "
-                f"{len(observed_labels)} classes: {observed_labels}. For regression or "
-                "multiclass projects, replace the metrics and schema assumptions in "
-                "TrainModelPipeline."
-            )
-        if set(class_labels) != set(observed_labels):
-            raise ValueError(
-                f"Configured target_values {class_labels} do not match observed "
-                f"target values {observed_labels}."
-            )
-        self.class_labels = class_labels
+        # Everything downstream — metrics, plots, schema checks — follows from
+        # the task, so resolve it once here.
+        self.task = detect_task(target, self.config.get("task"))
+        self.class_labels = (
+            class_labels(target, self.config.get("target_values"))
+            if self.task.is_classification
+            else []
+        )
 
         return features, target
 
@@ -276,7 +290,38 @@ class TrainModelPipeline(Pipeline):
         model_cls: type[BaseEstimator] = getattr(
             importlib.import_module(module_name), class_name
         )
-        return model_cls(**self.model_params)
+        model = model_cls(**self.model_params)
+        self._check_model_suits_task(model)
+        return model
+
+    def _check_model_suits_task(self, model: BaseEstimator) -> None:
+        """Fail early when the estimator family does not match the target.
+
+        A regressor fitted on class labels trains without complaint and only
+        fails later, when scikit-learn reports "a mix of binary and continuous
+        targets" from inside the metrics — a message that never mentions the
+        actual mistake. Checking here names the model, the task, and both ways
+        to fix it.
+
+        Raises:
+            ValueError: If a classifier is paired with a regression target or a
+                regressor with a classification target.
+        """
+        wants_classifier = self.task.is_classification
+        if wants_classifier == is_classifier(model):
+            return
+        if not wants_classifier and is_regressor(model):
+            return
+
+        expected = "classifier" if wants_classifier else "regressor"
+        actual = "classifier" if is_classifier(model) else "regressor"
+        raise ValueError(
+            f"Model {self.model_name!r} ({self.class_path}) is a {actual}, but "
+            f"the target was read as {self.task.value}, which needs a "
+            f"{expected}. Either choose a {expected} from model_registry in "
+            "cfg/config.yaml, or set `task:` there if the target was read "
+            "wrongly."
+        )
 
     # Training artifacts
 
@@ -307,12 +352,24 @@ class TrainModelPipeline(Pipeline):
         reports_dir.mkdir(parents=True, exist_ok=True)
 
         y_pred = self.model.predict(features)
-        positive_label = self.class_labels[-1]
+
+        if self.task is TaskType.REGRESSION:
+            return [
+                _plot_predicted_vs_actual(target, y_pred, plots_dir),
+                _plot_residuals(target, y_pred, plots_dir),
+            ]
 
         artifacts = [
             _plot_confusion_matrix(target, y_pred, self.class_labels, plots_dir),
             self._write_classification_report(target, y_pred, reports_dir),
         ]
+
+        # ROC and precision-recall curves are defined for two classes. Drawing
+        # them for a multiclass target would silently produce a one-vs-rest
+        # curve against an arbitrary class, which looks plausible and is wrong,
+        # so they are restricted rather than adapted.
+        if self.task is not TaskType.BINARY:
+            return artifacts
 
         scores = self._positive_class_scores(features)
         if scores is None:
@@ -321,6 +378,7 @@ class TrainModelPipeline(Pipeline):
                 "skipping the ROC and precision-recall curves."
             )
         else:
+            positive_label = self.class_labels[-1]
             artifacts.append(_plot_roc_curve(target, scores, positive_label, plots_dir))
             artifacts.append(_plot_pr_curve(target, scores, positive_label, plots_dir))
 

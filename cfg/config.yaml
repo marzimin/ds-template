@@ -1,10 +1,54 @@
+# =============================================================================
+# Project configuration. Everything the pipeline needs to know about your data
+# and your model lives here — you should not need to edit Python to swap either.
+# =============================================================================
+
 data:
   dir: "data/processed"
   raw_dir: "data/raw"
-  input_file: "input_data.csv"
+  # The one file the pipeline reads. Three demo datasets ship in data/raw/;
+  # the others are ignored until you name one here. See "dataset presets" below.
+  input_file: "breast_cancer.csv"
 
 target_column: "TARGET"
-target_values: [0, 1] # default pipeline metrics expect binary classification
+
+# What kind of problem this is. Decides which metrics are computed, which plots
+# are produced, and whether the target is checked against a fixed set of values.
+#   auto            infer from the target column; the decision is logged each run
+#   classification  force classification (binary or multiclass follows the data)
+#   regression      force regression
+#
+# Inference reads a target as classes when it is boolean, non-numeric, or a
+# whole number with at most 20 distinct values; as measurements otherwise.
+# Override here when your data is unusual — for example integer counts you want
+# to regress onto, which would otherwise look like class labels.
+task: auto
+
+# Permitted target values, for classification only. Catches stray labels early.
+# Leave as null for regression: a continuous target has no fixed value set, and
+# checking one would reject every valid row.
+target_values: [0, 1]
+
+# -----------------------------------------------------------------------------
+# Dataset presets
+# -----------------------------------------------------------------------------
+# The three bundled datasets, one per task type. To switch, copy the four
+# settings from a block below over the values above and set model_name to match.
+#
+#   Binary classification (the shipped default)
+#     input_file: "breast_cancer.csv"     task: auto   -> binary_classification
+#     target_values: [0, 1]               model_name: "xgb_classifier"
+#
+#   Multiclass classification
+#     input_file: "iris.csv"              task: auto   -> multiclass_classification
+#     target_values: [0, 1, 2]            model_name: "rf_classifier"
+#
+#   Regression
+#     input_file: "diabetes.csv"          task: auto   -> regression
+#     target_values: null                 model_name: "rf_regressor"
+#
+# Regenerate any of them with:  make sample-data
+# -----------------------------------------------------------------------------
 
 # MLflow experiment and Model Registry names. Both default to the project name
 # in backend/pyproject.toml, so renaming the project renames them too. Set
@@ -13,24 +57,63 @@ tracking:
   experiment_name: null
   registered_model_name: null
 
+# -----------------------------------------------------------------------------
+# Model
+# -----------------------------------------------------------------------------
+# Any class implementing the scikit-learn fit/predict API can be listed here.
+# The matching MLflow flavour is chosen automatically from the import path, so
+# adding a line is all that is needed — no Python changes.
+#
+# Use a *classifier* for classification targets and a *regressor* for continuous
+# ones. Pairing them the wrong way round produces a confusing error from
+# scikit-learn rather than from this template.
 model_registry:
-  xgboost: "xgboost.XGBClassifier"
-  xgb: "xgboost.XGBClassifier"
-  random_forest: "sklearn.ensemble.RandomForestClassifier"
-  rf: "sklearn.ensemble.RandomForestClassifier"
+  # Classifiers
+  xgb_classifier: "xgboost.XGBClassifier"
+  rf_classifier: "sklearn.ensemble.RandomForestClassifier"
+  logistic_regression: "sklearn.linear_model.LogisticRegression"
+  # Regressors
+  xgb_regressor: "xgboost.XGBRegressor"
+  rf_regressor: "sklearn.ensemble.RandomForestRegressor"
+  linear_regression: "sklearn.linear_model.LinearRegression"
 
-model_name: "xgboost" # choose from model_registry
+model_name: "xgb_classifier" # choose one of the keys above
+
+# Hyperparameters passed straight to the chosen estimator's constructor.
+#
+# Two accepted shapes:
+#   1. Nested per model name (below). Only the block matching model_name is
+#      used, so you can keep settings for several models side by side and
+#      switch between them by changing model_name alone.
+#   2. A flat mapping, which is passed to whichever model is selected. Simpler,
+#      but every model then has to accept the same arguments.
+#
+# Keys must be real constructor arguments for that estimator — LinearRegression
+# has no n_estimators, for instance.
 model_params:
-  n_estimators: 50
-  max_depth: 10
-  # class_weights: "balanced"
+  xgb_classifier:
+    n_estimators: 50
+    max_depth: 10
+  rf_classifier:
+    n_estimators: 100
+    max_depth: 10
+  logistic_regression: {}
+  rf_regressor:
+    n_estimators: 200
+    max_depth: 12
+  xgb_regressor:
+    n_estimators: 200
+    max_depth: 6
+  linear_regression: {}
 
-# Train/test split.
+# -----------------------------------------------------------------------------
+# Train/test split
+# -----------------------------------------------------------------------------
 #   test_size    — fraction held out for evaluation
 #   random_state — fixed so runs are reproducible; change to reshuffle
 #   stratify     — preserve class balance across the split. Recommended for
-#                  imbalanced targets; left off here so the demo split stays
-#                  a plain random one.
+#                  imbalanced classification targets; ignored for regression,
+#                  where there are no classes to balance.
 test_size: 0.2
 random_state: 42
 stratify: false

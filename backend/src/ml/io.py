@@ -37,8 +37,8 @@ def _derive_filename(file_name: str, suffix: str) -> str:
     """Append a suffix to a file stem, preserving the .csv extension.
 
     Examples:
-        ``_derive_filename("input_data.csv", "prepared")`` → ``"input_data_prepared.csv"``
-        ``_derive_filename("input_data.csv", "trained")``    → ``"input_data_trained.csv"``
+        ``_derive_filename("breast_cancer.csv", "prepared")`` → ``"breast_cancer_prepared.csv"``
+        ``_derive_filename("breast_cancer.csv", "trained")``  → ``"breast_cancer_trained.csv"``
     """
     stem = file_name.removesuffix(".csv")
     return f"{stem}_{suffix}.csv"
@@ -55,8 +55,8 @@ def read_data(
     Args:
         file_name: Base CSV file name (with or without .csv extension).
         suffix: Optional suffix to append to the file stem before reading
-            (e.g. ``"prepared"`` resolves ``input_data.csv`` →
-            ``input_data_prepared.csv``).
+            (e.g. ``"prepared"`` resolves ``breast_cancer.csv`` →
+            ``breast_cancer_prepared.csv``).
         raw: When ``True``, read from ``data.raw_dir``; otherwise from
             ``data.dir``.
         schema_obj: Optional Pandera schema key for validation.
@@ -113,8 +113,8 @@ def write_data(
         df: DataFrame to write.
         file_name: Base CSV file name (with or without .csv extension).
         suffix: Optional suffix to append to the file stem before writing
-            (e.g. ``"prepared"`` resolves ``input_data.csv`` →
-            ``input_data_prepared.csv``).
+            (e.g. ``"prepared"`` resolves ``breast_cancer.csv`` →
+            ``breast_cancer_prepared.csv``).
         schema_obj: Optional Pandera schema key for validation before writing.
     """
     if df.empty:

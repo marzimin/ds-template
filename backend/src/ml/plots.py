@@ -457,3 +457,81 @@ def _plot_pr_curve(
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
     return path
+
+
+# Regression plots
+
+
+def _plot_predicted_vs_actual(y_true: pd.Series, y_pred: Any, output_dir: Path) -> Path:
+    """Scatter predictions against truth, with a 45-degree reference line.
+
+    The regression counterpart of a confusion matrix: points on the line are
+    exact, and systematic departure from it reveals bias that a single summary
+    metric hides.
+
+    Args:
+        y_true: True targets.
+        y_pred: Predicted targets, aligned with ``y_true``.
+        output_dir: Directory where the plot file is saved.
+
+    Returns:
+        Path to the saved plot file.
+    """
+    actual = pd.Series(y_true).to_numpy()
+    predicted = pd.Series(y_pred).to_numpy()
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.scatter(actual, predicted, alpha=0.6, edgecolor="none")
+
+    low = float(min(actual.min(), predicted.min()))
+    high = float(max(actual.max(), predicted.max()))
+    ax.plot([low, high], [low, high], linestyle="--", color="grey", label="Perfect")
+
+    ax.set_xlabel("Actual")
+    ax.set_ylabel("Predicted")
+    ax.set_title("Predicted vs Actual")
+    ax.legend()
+    ax.grid(alpha=0.3)
+
+    path = output_dir / "predicted_vs_actual.png"
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+def _plot_residuals(y_true: pd.Series, y_pred: Any, output_dir: Path) -> Path:
+    """Plot residuals against predictions, alongside their distribution.
+
+    Residuals should scatter randomly around zero. Curvature suggests a missing
+    non-linear term; a widening funnel suggests non-constant variance. Neither
+    is visible in RMSE alone.
+
+    Args:
+        y_true: True targets.
+        y_pred: Predicted targets, aligned with ``y_true``.
+        output_dir: Directory where the plot file is saved.
+
+    Returns:
+        Path to the saved plot file.
+    """
+    predicted = pd.Series(y_pred).to_numpy()
+    residuals = pd.Series(y_true).to_numpy() - predicted
+
+    fig, (ax_scatter, ax_hist) = plt.subplots(1, 2, figsize=(12, 5))
+
+    ax_scatter.scatter(predicted, residuals, alpha=0.6, edgecolor="none")
+    ax_scatter.axhline(y=0, linestyle="--", color="grey")
+    ax_scatter.set_xlabel("Predicted")
+    ax_scatter.set_ylabel("Residual (actual - predicted)")
+    ax_scatter.set_title("Residuals vs Predicted")
+    ax_scatter.grid(alpha=0.3)
+
+    sns.histplot(residuals, ax=ax_hist, kde=True, bins=30)
+    ax_hist.axvline(x=0, linestyle="--", color="grey")
+    ax_hist.set_xlabel("Residual")
+    ax_hist.set_title("Residual distribution")
+
+    path = output_dir / "residuals.png"
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+    return path

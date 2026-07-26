@@ -30,7 +30,7 @@ if [[ ! -f "${PROJECT_ROOT}/.env" ]]; then
   cp "${PROJECT_ROOT}/.env.example" "${PROJECT_ROOT}/.env"
 fi
 
-echo "Generating the demo dataset (Breast Cancer Wisconsin)"
+echo "Generating the demo datasets (breast cancer, iris, california housing)"
 uv run python scripts/generate_sample_data.py
 
 echo "Done."

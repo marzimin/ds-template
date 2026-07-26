@@ -6,16 +6,14 @@ import pytest
 from src.ml.train_model import TrainModelPipeline
 
 _MOCK_CONFIG = {
-    "model_name": "xgboost",
+    "model_name": "xgb_classifier",
     "model_params": {
         "objective": "binary:logistic",
         "n_estimators": 10,
     },
     "model_registry": {
-        "xgboost": "xgboost.XGBClassifier",
-        "xgb": "xgboost.XGBClassifier",
-        "random_forest": "sklearn.ensemble.RandomForestClassifier",
-        "rf": "sklearn.ensemble.RandomForestClassifier",
+        "xgb_classifier": "xgboost.XGBClassifier",
+        "rf_classifier": "sklearn.ensemble.RandomForestClassifier",
     },
     "test_size": 0.5,
     "random_state": 123,
@@ -24,7 +22,7 @@ _MOCK_CONFIG = {
     "data": {
         "dir": "data/processed",
         "raw_dir": "data/raw",
-        "input_file": "input_data.csv",
+        "input_file": "breast_cancer.csv",
     },
 }
 
@@ -78,7 +76,9 @@ def test_pipeline_run(pipeline, data):
         # flavor, plus a signature for consumers to read the input schema from.
         mock_log_model.assert_called_once()
         log_kwargs = mock_log_model.call_args.kwargs
-        assert log_kwargs["class_path"] == _MOCK_CONFIG["model_registry"]["xgboost"]
+        assert (
+            log_kwargs["class_path"] == _MOCK_CONFIG["model_registry"]["xgb_classifier"]
+        )
         assert log_kwargs["signature"] is not None
         assert log_kwargs["input_example"] is not None
 
@@ -86,7 +86,7 @@ def test_pipeline_run(pipeline, data):
         kwargs = mock_write.call_args.kwargs
 
         assert "PREDICTION" in written_df.columns
-        assert kwargs["file_name"] == "input_data.csv"
+        assert kwargs["file_name"] == "breast_cancer.csv"
         assert kwargs["suffix"] == "trained"
         assert kwargs["schema_obj"] == "output_data"
 

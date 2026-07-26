@@ -9,7 +9,7 @@ _MOCK_CONFIG = {
     "data": {
         "dir": "data/processed",
         "raw_dir": "data/raw",
-        "input_file": "input_data.csv",
+        "input_file": "breast_cancer.csv",
     },
     "target_column": "TARGET",
 }

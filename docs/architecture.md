@@ -304,6 +304,85 @@ hardcoding `accuracy` and `f1_score`.
 
 ---
 
+## 7a. One decision drives the whole pipeline: what kind of problem is this?
+
+Before this section's design existed, the template only did binary
+classification, and the assumption was scattered: the validation step rejected
+anything else, the metrics hardcoded `pos_label`, the plots assumed two classes,
+and the schema insisted the target came from a fixed list of values. Supporting
+regression meant editing four files and knowing which four.
+
+Now one function answers the question once, and everything follows:
+
+```mermaid
+flowchart LR
+    T["target column"] --> D["detect_task()<br/>src/ml/task.py"]
+    D --> M["which metrics"]
+    D --> P["which plots"]
+    D --> S["whether to check<br/>target values"]
+
+    style D fill:#e6f4ea,stroke:#34a853
+```
+
+| Task | Metrics | Evaluation plots |
+| --- | --- | --- |
+| Binary classification | accuracy, precision, recall, f1 | confusion matrix, report, ROC, PR curve |
+| Multiclass classification | accuracy, macro precision / recall / f1 | confusion matrix, report |
+| Regression | RMSE, MAE, R² | predicted-vs-actual, residuals |
+
+The task is inferred from the target column and logged every run. `task:` in
+`cfg/config.yaml` overrides it when the heuristic guesses wrong — integer counts
+you want to regress onto look exactly like class labels.
+
+### Why the metrics are a dictionary
+
+`evaluate()` returns `dict[str, float]` rather than a fixed tuple. That one
+choice is why the rest works:
+
+- The metric set can differ per task without any caller changing shape.
+- MLflow logs whatever is in the dictionary.
+- The dashboard renders whatever MLflow reports.
+
+So adding a metric in `compute_metrics` makes it appear in tracking *and* in the
+web dashboard with no other edit. It also made the training code shorter — the
+old fixed tuple was unpacked into eight named variables and reassembled into a
+list before logging.
+
+### What each pipeline step does differently
+
+| Step | Task-dependent? | Why |
+| --- | --- | --- |
+| `prepare_data.py` | No | Loading and transforming a table is the same work regardless. Its schema check skips target-value validation when `target_values` is null, which is all a continuous target needs. |
+| `eda.py` | One plot | The target gets a class-balance bar chart or a histogram. Counting occurrences of a continuous target draws one bar per row. |
+| `train_model.py` | Yes | Metrics, evaluation plots, estimator-family check, and whether `stratify` applies. |
+
+Two guards were added because their absence produced errors that pointed at the
+wrong thing:
+
+**A mismatched estimator is caught at construction.** A regressor fitted on
+class labels trains perfectly happily and only fails later, inside the metrics,
+where scikit-learn reports "a mix of binary and continuous targets" — accurate,
+but it never mentions that you picked the wrong kind of model. The template now
+stops earlier and names the model, the task, and both fixes.
+
+**`stratify` is ignored for regression.** Almost every value in a continuous
+target is unique, so scikit-learn refuses with "the least populated class has
+only 1 member". The setting is dropped with a log line rather than passed
+through.
+
+### Where the template still says no
+
+Two omissions are deliberate rather than unfinished.
+
+**Multiclass gets no ROC or precision-recall curve.** Those are defined for two
+classes. Producing one for three would silently give a one-vs-rest curve against
+an arbitrary class — a plot that looks entirely reasonable and answers a question
+you did not ask. A missing plot is better than a misleading one.
+
+**Categorical features and missing values still stop the pipeline**, with an
+error naming the offending columns. Encoding and imputation are modelling
+decisions with real consequences, and guessing on your behalf would hide them.
+
 ## 7b. The frontend, for someone who has never written one
 
 Four ideas cover most of what the `frontend/` directory is doing.
@@ -514,6 +593,8 @@ layer failed*. This table is the fastest way to narrow it down.
 
 | Symptom | Most likely layer | First thing to check |
 | --- | --- | --- |
+| Wrong metrics for your problem | Task inferred incorrectly | The "Task inferred as…" line in the run log; set `task:` in `cfg/config.yaml` |
+| Schema error on your own data | `target_values` does not match | Set it to your labels, or `null` for regression |
 | Page loads but every panel is empty | API not running | Open `http://localhost:8000/docs` |
 | Predictions return `503` | No trained model | Run `make pipeline` |
 | Predictions return `422` | Input shape mismatch | Compare the form against `/api/predict/schema` |
