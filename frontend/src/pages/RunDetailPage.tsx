@@ -5,7 +5,7 @@
  * this keeps working when the API runs somewhere else entirely.
  */
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router';
 
 import { ArtifactGallery } from '../components/ArtifactGallery';
 import { EmptyState, ErrorState, Loading } from '../components/States';

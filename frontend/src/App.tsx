@@ -1,5 +1,5 @@
 /** Routing table: which URL shows which page. */
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router';
 
 import { Layout } from './components/Layout';
 import { PredictPage } from './pages/PredictPage';

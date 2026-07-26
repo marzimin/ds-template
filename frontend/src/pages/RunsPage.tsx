@@ -5,7 +5,7 @@
  * being a fixed list, so a pipeline that adds a metric shows it immediately and
  * one that renames a metric does not leave an empty column behind.
  */
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { EmptyState, ErrorState, Loading } from '../components/States';
 import { useRuns } from '../api/hooks';

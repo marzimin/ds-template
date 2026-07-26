@@ -4,7 +4,7 @@
  * The status line answers "is the backend up, and is a model loaded?" on every
  * page, so a blank panel is never ambiguous.
  */
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet } from 'react-router';
 
 import { useHealth, useReloadModel } from '../api/hooks';
 
