@@ -4,14 +4,14 @@ import logging
 
 from fastapi import APIRouter, HTTPException, status
 
-from src.api.deps import ConfigDep, ModelDep, get_model
-from src.api.models import (
+from src.api.contracts import (
     FeatureSpecResponse,
     ModelReloadResponse,
     PredictRequest,
     PredictResponse,
     PredictSchemaResponse,
 )
+from src.api.deps import ConfigDep, ModelDep, get_model
 from src.ml.inference import FeatureValidationError, clear_model_cache
 
 logger = logging.getLogger(__name__)

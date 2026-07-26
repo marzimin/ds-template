@@ -15,8 +15,8 @@ from fastapi.responses import FileResponse
 from mlflow.entities import ViewType
 from mlflow.exceptions import MlflowException
 
+from src.api.contracts import ArtifactEntry, RunDetail, RunSummary
 from src.api.deps import ClientDep, ConfigDep
-from src.api.models import ArtifactEntry, RunDetail, RunSummary
 from src.ml.tracking import experiment_name
 
 logger = logging.getLogger(__name__)

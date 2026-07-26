@@ -349,7 +349,7 @@ backend/
 ├── notebooks/              # Exploratory notebooks
 ├── tests/                  # Pytest test suite
 └── src/
-    ├── main.py             # CLI entry point
+    ├── cli.py              # Entry point for the terminal workflow
     ├── config.py           # Paths, .env, and cfg/config.yaml access
     ├── schemas.py          # Pandera data validation schemas
     ├── ml/
@@ -364,9 +364,23 @@ backend/
     └── api/
         ├── app.py          # FastAPI application factory
         ├── deps.py         # Shared dependencies (model, config, MLflow client)
-        ├── models.py       # Request/response contracts (Pydantic)
+        ├── contracts.py    # Request/response payload shapes (Pydantic)
         └── routers/        # health, predict, runs
 ```
+
+Three words are easy to confuse in a repository that has both ML and web code,
+so each has exactly one meaning here:
+
+| Term | Means | Lives in |
+| --- | --- | --- |
+| **model** | A trained estimator | MLflow; loaded by `ml/inference.py` |
+| **schema** | A Pandera DataFrame contract | `src/schemas.py` |
+| **contract** | An HTTP request/response shape | `src/api/contracts.py` |
+
+The layering rule is that **`api/` translates and `ml/` decides** — nothing in
+`ml/` imports from `api/`. Prediction rules and MLflow access live in `ml/`; the
+API only maps their results and exceptions onto HTTP status codes. That is what
+lets the pipelines be tested without a web server and the API without MLflow.
 
 `config.py` and `schemas.py` sit at the top of the package because they are the
 two modules you are most likely to edit, and because they are deliberately light

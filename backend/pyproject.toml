@@ -35,7 +35,7 @@ dev = [
 ]
 
 [project.scripts]
-pipeline = "src.main:main"
+pipeline = "src.cli:main"
 
 [build-system]
 requires = ["hatchling"]

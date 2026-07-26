@@ -16,7 +16,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api.models import ErrorResponse
+from src.api.contracts import ErrorResponse
 from src.api.routers import health, predict, runs
 from src.config import project_name, read_config
 from src.ml.inference import ModelNotAvailableError, get_cached_model

@@ -2,8 +2,8 @@ from unittest.mock import patch
 
 import pytest
 
+from src.cli import main
 from src.config import read_config
-from src.main import main
 
 
 def test_read_config_resolves_from_project_root(monkeypatch, tmp_path):

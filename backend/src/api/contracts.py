@@ -1,9 +1,14 @@
 """Request and response shapes for the API.
 
-These models are the API's contract. FastAPI validates against them, documents
-them at ``/docs``, and publishes them as an OpenAPI schema from which the
-frontend's TypeScript types are generated — so a field renamed here surfaces as
-a compile error in the frontend rather than a silently missing value.
+Named ``contracts`` rather than the usual FastAPI ``models`` because in this
+repository "model" already means a trained estimator, and ``schemas`` already
+means the Pandera DataFrame contracts in :mod:`src.schemas`. Everything here is
+an HTTP payload shape; nothing here is an ML model.
+
+These are the API's contract. FastAPI validates against them, documents them at
+``/docs``, and publishes them as an OpenAPI schema from which the frontend's
+TypeScript types are generated — so a field renamed here surfaces as a compile
+error in the frontend rather than a silently missing value.
 
 Nothing here names a dataset feature. Prediction inputs are a free-form mapping
 validated at request time against the loaded model's signature, which is what

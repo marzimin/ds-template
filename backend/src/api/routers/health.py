@@ -7,8 +7,8 @@ distinct questions with two distinct answers.
 
 from fastapi import APIRouter
 
+from src.api.contracts import HealthResponse
 from src.api.deps import OptionalModelDep, tracking_uri
-from src.api.models import HealthResponse
 
 router = APIRouter(tags=["health"])
 
