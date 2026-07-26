@@ -89,6 +89,20 @@ Activate the environment manually later with:
 source backend/.venv/bin/activate
 ```
 
+### Make shortcuts
+
+A `Makefile` at the repository root wraps the common tasks so you do not have to
+change directory:
+
+```bash
+make setup        # everything above
+make test         # backend test suite
+make lint         # all pre-commit hooks
+make mlflow       # start a local tracking server
+make pipeline     # prepare -> EDA -> train
+make help         # list every target
+```
+
 ---
 
 ## Package management
@@ -162,6 +176,52 @@ MLflow will track metrics, models, and plots for each run.
 
 ---
 
+### Choosing a model
+
+Models are declared in `cfg/config.yaml`, not in code. `model_registry` maps a
+short name to a fully qualified class path, which is imported dynamically at
+training time:
+
+```yaml
+model_registry:
+  xgboost: "xgboost.XGBClassifier"
+  random_forest: "sklearn.ensemble.RandomForestClassifier"
+  lightgbm: "lightgbm.LGBMClassifier"   # add your own
+
+model_name: "xgboost"                   # pick one from the registry
+model_params:
+  n_estimators: 50
+  max_depth: 10
+```
+
+To use a different estimator, add a line to `model_registry` and point
+`model_name` at it — no Python changes needed. Any class implementing the
+scikit-learn `fit`/`predict` API works.
+
+The correct MLflow flavor is selected automatically from the root module of the
+import path (`xgboost.*` → `mlflow.xgboost`, `lightgbm.*` → `mlflow.lightgbm`,
+and so on, defaulting to `mlflow.sklearn`). This matters because
+`mlflow.sklearn` cannot serialise non-sklearn estimators such as XGBoost.
+
+Every model is logged with a **signature** and registered in the MLflow Model
+Registry, so it can be loaded without knowing which flavor produced it:
+
+```python
+import mlflow
+model = mlflow.pyfunc.load_model("models:/<project-name>/latest")
+model.metadata.get_input_schema()   # the features a prediction needs
+```
+
+The experiment and registered model names default to `[project].name` in
+`backend/pyproject.toml`, so renaming the project renames them too. Override
+either via the `tracking` block in `cfg/config.yaml`.
+
+Note that the default pipeline assumes **binary classification** throughout its
+metrics, plots, and schemas. Swapping estimators is a config change; moving to
+regression or multiclass means editing `TrainModelPipeline` and `schemas.py`.
+
+---
+
 ### Sample data
 
 The template ships with the **Breast Cancer Wisconsin** dataset as a runnable
@@ -174,7 +234,7 @@ cd backend && uv run python scripts/generate_sample_data.py
 
 To use your own data, drop a CSV into `data/raw/` (at the repository root) named
 to match `data.input_file` in `cfg/config.yaml`, then update the schemas in
-`backend/src/utils/schemas.py` to describe your columns.
+`backend/src/schemas.py` to describe your columns.
 
 The starter training pipeline intentionally assumes:
 
@@ -233,15 +293,23 @@ backend/
 ├── tests/                  # Pytest test suite
 └── src/
     ├── main.py             # CLI entry point
-    ├── pipelines/
-    │   ├── pipeline.py     # Abstract Pipeline base class
-    │   ├── prepare_data.py # Data loading and transformations
-    │   ├── eda.py          # Exploratory plots logged to MLflow
-    │   └── train_model.py  # Model training with MLflow tracking
-    └── utils/
-        ├── schemas.py      # Pandera data validation schemas
-        └── utils.py        # CSV I/O, path resolution, and config helpers
+    ├── config.py           # Paths, .env, and cfg/config.yaml access
+    ├── schemas.py          # Pandera data validation schemas
+    └── ml/
+        ├── pipeline.py     # Abstract Pipeline base class
+        ├── prepare_data.py # Data loading and transformations
+        ├── eda.py          # Exploratory plots logged to MLflow
+        ├── train_model.py  # Model training with MLflow tracking
+        ├── io.py           # CSV read/write with schema validation
+        ├── plots.py        # Matplotlib/seaborn plotting helpers
+        └── tracking.py     # MLflow setup and flavor-aware model logging
 ```
+
+`config.py` and `schemas.py` sit at the top of the package because they are the
+two modules you are most likely to edit, and because they are deliberately light
+— neither imports matplotlib, seaborn, or mlflow. That keeps them cheap for
+consumers (such as an API layer) that need configuration and data contracts but
+not the modelling and plotting stack.
 
 `cfg/`, `data/`, and `outputs/` deliberately sit at the repository root rather
 than inside `backend/`: they are the part of the template you configure and the
@@ -283,7 +351,7 @@ cd backend && uv run pytest
 
 ## Schema checks
 
-- Schema definitions live in `backend/src/utils/schemas.py`
+- Schema definitions live in `backend/src/schemas.py`
 
 When data is read or written via the utility functions:
 
