@@ -100,8 +100,19 @@ make test         # backend test suite
 make lint         # all pre-commit hooks
 make mlflow       # start a local tracking server
 make pipeline     # prepare -> EDA -> train
+make hooks        # reinstall the git pre-commit hook
 make help         # list every target
 ```
+
+### Editor setup
+
+`.vscode/settings.json` is tracked and points VS Code at
+`backend/.venv/bin/python`. Editors cannot guess this from the repository root,
+and without it every dependency is reported as missing. If you use a different
+editor, point its interpreter at that path.
+
+If a commit ever fails with `pre-commit not found`, the installed git hook is
+referencing a virtual environment that no longer exists. Run `make hooks`.
 
 ---
 

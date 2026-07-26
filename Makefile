@@ -7,7 +7,7 @@ MLFLOW_PORT ?= 5000
 BACKEND := backend
 
 .DEFAULT_GOAL := help
-.PHONY: help setup test lint pipeline mlflow sample-data docker-build clean
+.PHONY: help setup hooks test lint pipeline mlflow sample-data docker-build clean
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -15,6 +15,9 @@ help: ## Show this help
 
 setup: ## Create the venv, install dependencies and hooks, generate demo data
 	PYTHON_VERSION=$(PYTHON_VERSION) ./$(BACKEND)/setup.sh
+
+hooks: ## (Re)install the git pre-commit hook against backend/.venv
+	$(BACKEND)/.venv/bin/pre-commit install --allow-missing-config
 
 test: ## Run the backend test suite
 	cd $(BACKEND) && uv run pytest

@@ -55,7 +55,12 @@ test-output.xml
 
 # --- Tools / IDEs ---
 .idea/
-.vscode/
+# Ignore .vscode contents but keep settings.json tracked: it points editors at
+# backend/.venv, which is not guessable from the repository root. This must use
+# .vscode/* rather than .vscode/ — git does not descend into an excluded
+# directory, so a negation inside one never applies.
+.vscode/*
+!.vscode/settings.json
 *~
 *.swp
 *.swo
