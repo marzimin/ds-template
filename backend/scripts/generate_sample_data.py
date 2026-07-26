@@ -3,9 +3,13 @@
 Three datasets ship with the template, one per supported task type, so you can
 try each without finding your own data first:
 
-    breast_cancer.csv      binary classification   (the default)
-    iris.csv               multiclass classification
-    california_housing.csv regression
+    breast_cancer.csv  binary classification   (the default)
+    iris.csv           multiclass classification
+    diabetes.csv       regression
+
+All three are bundled with scikit-learn, so generating them needs no network
+access — which matters because this script runs during ``setup.sh`` and the
+Docker build.
 
 Only the file named by ``data.input_file`` in ``cfg/config.yaml`` is read by the
 pipeline; the others sit in ``data/raw/`` until you point the config at one. See
@@ -24,7 +28,7 @@ from pathlib import Path
 from typing import Callable
 
 import pandas as pd
-from sklearn.datasets import fetch_california_housing, load_breast_cancer, load_iris
+from sklearn.datasets import load_breast_cancer, load_diabetes, load_iris
 
 from src.config import read_config, resolve_project_path
 
@@ -45,73 +49,48 @@ def _iris() -> pd.DataFrame:
     return load_iris(as_frame=True).frame
 
 
-def _california_housing() -> pd.DataFrame:
-    """Regression: 20,640 rows, 8 numeric features, continuous house value.
+def _diabetes() -> pd.DataFrame:
+    """Regression: 442 rows, 10 numeric features, continuous disease score.
 
-    Unlike the other two this is downloaded rather than bundled with
-    scikit-learn, and cached under ``~/scikit_learn_data`` afterwards.
+    Features arrive mean-centred and scaled, which is realistic for a
+    regression demo and needs no preparation to train on.
     """
-    frame = fetch_california_housing(as_frame=True).frame
-    # Name the target consistently with the other datasets so one
-    # `target_column` setting covers all three.
-    return frame.rename(columns={"MedHouseVal": "target"})
+    return load_diabetes(as_frame=True).frame
 
 
 #: Filename in data/raw → builder. Add an entry to ship another dataset.
+#: Every builder must return a frame whose target column is named ``target``,
+#: so one ``target_column`` setting in cfg/config.yaml covers them all.
 DATASETS: dict[str, Callable[[], pd.DataFrame]] = {
     "breast_cancer.csv": _breast_cancer,
     "iris.csv": _iris,
-    "california_housing.csv": _california_housing,
+    "diabetes.csv": _diabetes,
 }
 
 
-def write_dataset(name: str, build: Callable[[], pd.DataFrame], raw_dir: Path) -> bool:
-    """Build one dataset and write it to ``raw_dir``.
-
-    Args:
-        name: Output file name.
-        build: Callable returning the frame to write.
-        raw_dir: Destination directory.
-
-    Returns:
-        True when written, False when it could not be produced.
-    """
-    try:
-        frame = build()
-    except Exception as exc:  # noqa: BLE001 - one dataset must not block the rest
-        # California housing is fetched over the network. Skipping it leaves a
-        # usable template rather than failing setup on an offline machine.
-        logger.warning(
-            "Could not generate %s (%s). The other datasets are unaffected; "
-            "rerun this script when you have network access.",
-            name,
-            exc,
-        )
-        return False
-
-    path = raw_dir / name
-    frame.to_csv(path, index=False)
-    logger.info("Wrote %s. Shape: %s", path, frame.shape)
-    return True
-
-
 def main() -> None:
-    """Write every demo dataset to the configured raw data directory."""
+    """Write every demo dataset to the configured raw data directory.
+
+    Failures are not caught: every dataset here is bundled with scikit-learn, so
+    one failing means something is genuinely wrong rather than merely offline,
+    and setup should stop rather than continue with a half-built data directory.
+    If you add a dataset that downloads, guard that builder specifically.
+    """
     config = read_config()
     raw_dir = resolve_project_path(Path(config["data"]["raw_dir"]))
     raw_dir.mkdir(parents=True, exist_ok=True)
 
-    written = [
-        name for name, build in DATASETS.items() if write_dataset(name, build, raw_dir)
-    ]
+    for name, build in DATASETS.items():
+        frame = build()
+        path = raw_dir / name
+        frame.to_csv(path, index=False)
+        logger.info("Wrote %s. Shape: %s", path, frame.shape)
 
-    selected = config["data"]["input_file"]
     logger.info(
-        "%d of %d datasets written. The pipeline reads %r; the others are "
-        "ignored until you point data.input_file at one.",
-        len(written),
+        "%d datasets written. The pipeline reads %r; the others are ignored "
+        "until you point data.input_file at one.",
         len(DATASETS),
-        selected,
+        config["data"]["input_file"],
     )
 
 

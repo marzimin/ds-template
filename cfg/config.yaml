@@ -37,15 +37,15 @@ target_values: [0, 1]
 #
 #   Binary classification (the shipped default)
 #     input_file: "breast_cancer.csv"     task: auto   -> binary_classification
-#     target_values: [0, 1]               model_name: "xgboost"
+#     target_values: [0, 1]               model_name: "xgb_classifier"
 #
 #   Multiclass classification
 #     input_file: "iris.csv"              task: auto   -> multiclass_classification
-#     target_values: [0, 1, 2]            model_name: "random_forest"
+#     target_values: [0, 1, 2]            model_name: "rf_classifier"
 #
 #   Regression
-#     input_file: "california_housing.csv"  task: auto -> regression
-#     target_values: null                   model_name: "rf_regressor"
+#     input_file: "diabetes.csv"          task: auto   -> regression
+#     target_values: null                 model_name: "rf_regressor"
 #
 # Regenerate any of them with:  make sample-data
 # -----------------------------------------------------------------------------
@@ -69,16 +69,15 @@ tracking:
 # scikit-learn rather than from this template.
 model_registry:
   # Classifiers
-  xgboost: "xgboost.XGBClassifier"
-  xgb: "xgboost.XGBClassifier"
-  random_forest: "sklearn.ensemble.RandomForestClassifier"
-  rf: "sklearn.ensemble.RandomForestClassifier"
+  xgb_classifier: "xgboost.XGBClassifier"
+  rf_classifier: "sklearn.ensemble.RandomForestClassifier"
+  logistic_regression: "sklearn.linear_model.LogisticRegression"
   # Regressors
   xgb_regressor: "xgboost.XGBRegressor"
   rf_regressor: "sklearn.ensemble.RandomForestRegressor"
   linear_regression: "sklearn.linear_model.LinearRegression"
 
-model_name: "xgboost" # choose one of the keys above
+model_name: "xgb_classifier" # choose one of the keys above
 
 # Hyperparameters passed straight to the chosen estimator's constructor.
 #
@@ -92,12 +91,13 @@ model_name: "xgboost" # choose one of the keys above
 # Keys must be real constructor arguments for that estimator — LinearRegression
 # has no n_estimators, for instance.
 model_params:
-  xgboost:
+  xgb_classifier:
     n_estimators: 50
     max_depth: 10
-  random_forest:
+  rf_classifier:
     n_estimators: 100
     max_depth: 10
+  logistic_regression: {}
   rf_regressor:
     n_estimators: 200
     max_depth: 12

@@ -223,3 +223,31 @@ def test_flat_model_params_still_apply_to_any_model():
     config["model_params"] = {"n_estimators": 7}
 
     assert _pipeline(df, config).model_params == {"n_estimators": 7}
+
+
+def test_missing_model_name_names_the_available_keys():
+    """No default model name: a hardcoded one drifts when a key is renamed.
+
+    Defaulting to a specific key means renaming it in model_registry produces
+    "Unsupported model_name 'xgboost'" for a model the user never chose.
+    """
+    df, config, *_ = CASES["binary"]
+    config = {**config, "model_name": None}
+
+    with pytest.raises(ValueError, match="model_name is not set"):
+        _pipeline(df, config)
+
+
+def test_nested_params_for_an_unlisted_model_are_not_passed_through():
+    """A model absent from a nested block gets no parameters, not all of them.
+
+    Passing the whole nested mapping as constructor arguments would call the
+    estimator with one keyword per model name.
+    """
+    df, config, *_ = CASES["binary"]
+    config = {
+        **config,
+        "model_params": {"other_model": {"n_estimators": 999}},
+    }
+
+    assert _pipeline(df, config).model_params == {}

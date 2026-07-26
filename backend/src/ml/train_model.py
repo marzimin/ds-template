@@ -51,16 +51,18 @@ class TrainModelPipeline(Pipeline):
         if not self.config:
             raise ValueError("Configuration file is empty or not found.")
 
-        self.model_name = str(self.config.get("model_name", "xgboost")).lower()
-        raw_params = self.config.get("model_params", {}) or {}
-        if (
-            isinstance(raw_params, dict)
-            and self.model_name in raw_params
-            and isinstance(raw_params[self.model_name], dict)
-        ):
-            self.model_params = raw_params[self.model_name]
-        else:
-            self.model_params = raw_params
+        # No default model name. A hardcoded one drifts out of step with
+        # model_registry the moment a key is renamed, and then reports a model
+        # the user never chose.
+        configured_name = self.config.get("model_name")
+        if not configured_name:
+            raise ValueError(
+                "model_name is not set in cfg/config.yaml. Choose one of the "
+                f"keys under model_registry: "
+                f"{sorted(self.config.get('model_registry', {}))}."
+            )
+        self.model_name = str(configured_name).lower()
+        self.model_params = self._select_model_params()
         self.run_name = run_name or "Default_Run_Name"
         self.model: Optional[BaseEstimator] = None
         # Resolved from the target in _validate_training_data. Defaults to
@@ -70,6 +72,30 @@ class TrainModelPipeline(Pipeline):
         # Import path from model_registry; set by _build_model and used to pick
         # the matching MLflow flavor when logging.
         self.class_path: str = ""
+
+    def _select_model_params(self) -> dict[str, Any]:
+        """Return the hyperparameters for the selected model.
+
+        ``model_params`` accepts two shapes. Nested by model name lets settings
+        for several models sit side by side, so switching is a one-word change
+        to ``model_name``; a flat mapping applies to whichever model is chosen.
+
+        Returns:
+            Constructor arguments for the selected estimator.
+        """
+        params = self.config.get("model_params") or {}
+        if not isinstance(params, dict):
+            return {}
+
+        nested = params.get(self.model_name)
+        if isinstance(nested, dict):
+            return nested
+
+        # A flat mapping has no dict values; one that does is nested for other
+        # models, so this model simply has no parameters of its own.
+        if any(isinstance(value, dict) for value in params.values()):
+            return {}
+        return params
 
     def run(self) -> None:
         """Execute training and log metrics, model, and plots to MLflow."""

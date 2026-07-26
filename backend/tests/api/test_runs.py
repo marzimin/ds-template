@@ -19,7 +19,7 @@ def _run(run_id="run-1", name="demo", metrics=None, params=None, tags=None):
         ),
         data=SimpleNamespace(
             metrics=metrics or {"test_accuracy": 0.95},
-            params=params or {"model_name": "xgboost"},
+            params=params or {"model_name": "xgb_classifier"},
             tags=tags or {"mlflow.source.name": "pipeline"},
         ),
     )
@@ -70,7 +70,7 @@ def test_get_run_includes_params_and_tags(client, mlflow_client):
     response = client.get("/api/runs/run-1")
     assert response.status_code == 200
     body = response.json()
-    assert body["params"] == {"model_name": "xgboost"}
+    assert body["params"] == {"model_name": "xgb_classifier"}
     assert body["tags"] == {"mlflow.source.name": "pipeline"}
 
 

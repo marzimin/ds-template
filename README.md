@@ -86,7 +86,7 @@ This will:
 - Install all project dependencies (including dev extras)
 - Install pre-commit hooks
 - Create `.env` from `.env.example` if it does not already exist
-- Generate the demo dataset into `data/raw/breast_cancer.csv`
+- Generate three demo datasets into `data/raw/`
 
 Activate the environment manually later with:
 
@@ -100,7 +100,7 @@ A `Makefile` at the repository root wraps the common tasks so you do not have to
 change directory:
 
 ```bash
-make setup        # install both halves, hooks, and the demo dataset
+make setup        # install both halves, hooks, and the demo datasets
 make test         # every test suite (backend + frontend)
 make lint         # lint everything
 make pipeline     # prepare -> EDA -> train
@@ -302,16 +302,16 @@ training time:
 ```yaml
 model_registry:
   # Classifiers
-  xgboost: "xgboost.XGBClassifier"
-  random_forest: "sklearn.ensemble.RandomForestClassifier"
-  lightgbm: "lightgbm.LGBMClassifier"        # add your own
+  xgb_classifier: "xgboost.XGBClassifier"
+  rf_classifier: "sklearn.ensemble.RandomForestClassifier"
+  lgbm_classifier: "lightgbm.LGBMClassifier"   # add your own
   # Regressors
   rf_regressor: "sklearn.ensemble.RandomForestRegressor"
   linear_regression: "sklearn.linear_model.LinearRegression"
 
-model_name: "xgboost"                        # pick one from the registry
+model_name: "xgb_classifier"                  # pick one from the registry
 model_params:
-  xgboost:                                   # nested per model, see below
+  xgb_classifier:                             # nested per model, see below
     n_estimators: 50
     max_depth: 10
 ```
@@ -329,7 +329,7 @@ several models side by side, so switching is a one-word change to `model_name`:
 
 ```yaml
 model_params:
-  xgboost:
+  xgb_classifier:
     n_estimators: 50
     max_depth: 10
   rf_regressor:
@@ -446,8 +446,8 @@ into `data/raw/`; regenerate at any time with `make sample-data`.
 | File in `data/raw/` | Task | Shape | Config to select it |
 | --- | --- | --- | --- |
 | `breast_cancer.csv` | binary classification | 569 × 31 | *the shipped default* |
-| `iris.csv` | multiclass classification | 150 × 5 | `target_values: [0, 1, 2]`, `model_name: "random_forest"` |
-| `california_housing.csv` | regression | 20,640 × 9 | `target_values: null`, `model_name: "rf_regressor"` |
+| `iris.csv` | multiclass classification | 150 × 5 | `target_values: [0, 1, 2]`, `model_name: "rf_classifier"` |
+| `diabetes.csv` | regression | 442 × 11 | `target_values: null`, `model_name: "rf_regressor"` |
 
 **Only the file named by `data.input_file` is read.** The other two sit in
 `data/raw/` doing nothing until you point the config at one. Set `input_file`,
@@ -458,9 +458,8 @@ copy-paste block in `cfg/config.yaml`.
 Every dataset names its target column `target`, so the shipped
 `target_column: "TARGET"` covers all three.
 
-> `california_housing.csv` is downloaded by scikit-learn rather than bundled
-> with it, and cached afterwards. On a machine without network access it is
-> skipped with a warning and the other two still generate.
+All three are bundled with scikit-learn, so generating them needs no network
+access — which matters because this runs during `setup.sh` and the Docker build.
 
 ### Using your own data
 
@@ -526,7 +525,7 @@ backend/
 ├── setup.sh                # Development environment bootstrap
 ├── Dockerfile              # Built from the repository root
 ├── scripts/
-│   └── generate_sample_data.py  # Writes the demo dataset to data/raw/
+│   └── generate_sample_data.py  # Writes the three demo datasets
 ├── notebooks/              # Exploratory notebooks
 ├── tests/                  # Pytest test suite
 └── src/
