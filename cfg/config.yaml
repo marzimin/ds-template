@@ -6,6 +6,13 @@ data:
 target_column: "TARGET"
 target_values: [0, 1] # default pipeline metrics expect binary classification
 
+# MLflow experiment and Model Registry names. Both default to the project name
+# in backend/pyproject.toml, so renaming the project renames them too. Set
+# either key here to override.
+tracking:
+  experiment_name: null
+  registered_model_name: null
+
 model_registry:
   xgboost: "xgboost.XGBClassifier"
   xgb: "xgboost.XGBClassifier"

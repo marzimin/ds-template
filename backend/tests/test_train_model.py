@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from src.pipelines.train_model import TrainModelPipeline
+from src.ml.train_model import TrainModelPipeline
 
 _MOCK_CONFIG = {
     "model_name": "xgboost",
@@ -45,8 +45,8 @@ def dummy_data_fixture():
 def mock_pipeline_fixture(data):
     """TrainModelPipeline with config and data I/O mocked out."""
     with (
-        patch("src.pipelines.train_model.read_config", return_value=_MOCK_CONFIG),
-        patch("src.pipelines.train_model.read_data", return_value=data),
+        patch("src.ml.train_model.read_config", return_value=_MOCK_CONFIG),
+        patch("src.ml.train_model.read_data", return_value=data),
     ):
         return TrainModelPipeline()
 
@@ -59,20 +59,28 @@ def test_pipeline_run(pipeline, data):
 
     with (
         patch("mlflow.set_tracking_uri"),
-        patch("src.pipelines.train_model.setup_mlflow"),
+        patch("src.ml.train_model.setup_mlflow"),
         patch("mlflow.start_run", return_value=start_run_cm),
         patch("mlflow.log_param"),
         patch("mlflow.log_metric"),
         patch("mlflow.log_params"),
-        patch("mlflow.sklearn.log_model"),
+        patch("src.ml.train_model.log_model") as mock_log_model,
         patch("mlflow.log_artifact"),
-        patch("src.pipelines.train_model.read_data", return_value=data),
-        patch("src.pipelines.train_model.write_data") as mock_write,
+        patch("src.ml.train_model.read_data", return_value=data),
+        patch("src.ml.train_model.write_data") as mock_write,
     ):
         pipeline.run()
 
         assert pipeline.model is not None
         mock_write.assert_called_once()
+
+        # The model must be logged with the import path that selects its MLflow
+        # flavor, plus a signature for consumers to read the input schema from.
+        mock_log_model.assert_called_once()
+        log_kwargs = mock_log_model.call_args.kwargs
+        assert log_kwargs["class_path"] == _MOCK_CONFIG["model_registry"]["xgboost"]
+        assert log_kwargs["signature"] is not None
+        assert log_kwargs["input_example"] is not None
 
         written_df = mock_write.call_args[0][0]
         kwargs = mock_write.call_args.kwargs

@@ -2,8 +2,9 @@ import logging
 
 import pandas as pd
 
-from src.pipelines.pipeline import Pipeline
-from src.utils.utils import read_config, read_data, write_data
+from src.config import read_config
+from src.ml.io import read_data, write_data
+from src.ml.pipeline import Pipeline
 
 logging.basicConfig(
     level=logging.INFO,

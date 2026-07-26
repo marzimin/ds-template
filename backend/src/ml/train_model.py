@@ -6,7 +6,6 @@ from typing import Optional, cast
 
 import matplotlib.pyplot as plt
 import mlflow
-import mlflow.sklearn
 import pandas as pd
 import seaborn as sns
 from sklearn.base import BaseEstimator
@@ -23,15 +22,11 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import train_test_split
 
-from src.pipelines.pipeline import Pipeline
-from src.utils.utils import (
-    normalise_column_name,
-    read_config,
-    read_data,
-    resolve_project_path,
-    setup_mlflow,
-    write_data,
-)
+from src.config import read_config, resolve_project_path
+from src.ml.io import read_data, write_data
+from src.ml.pipeline import Pipeline
+from src.ml.tracking import build_signature, log_model, setup_mlflow
+from src.schemas import normalise_column_name
 
 logging.basicConfig(
     level=logging.INFO,
@@ -70,6 +65,9 @@ class TrainModelPipeline(Pipeline):
         self.run_name = run_name or "Default_Run_Name"
         self.model: Optional[BaseEstimator] = None
         self.class_labels: list[object] = []
+        # Import path from model_registry; set by _build_model and used to pick
+        # the matching MLflow flavor when logging.
+        self.class_path: str = ""
 
     def run(self) -> None:
         """Execute training and log metrics, model, and plots to MLflow."""
@@ -133,7 +131,18 @@ class TrainModelPipeline(Pipeline):
             self._log_pr_curve(features=X_test, target=y_test)
 
             if self.model is not None:
-                mlflow.sklearn.log_model(self.model, name=self.model_name)
+                # A signature is logged rather than left optional: it is what
+                # lets consumers discover the feature names and types a
+                # prediction request must supply.
+                signature = build_signature(X_train, self.model.predict(X_train))
+                model_uri = log_model(
+                    self.model,
+                    class_path=self.class_path,
+                    config=self.config,
+                    signature=signature,
+                    input_example=X_train.head(5),
+                )
+                logger.info("Model logged to %s", model_uri)
 
             if self.model is not None:
                 df_out = df.copy()
@@ -269,6 +278,7 @@ class TrainModelPipeline(Pipeline):
                 f"Unsupported model_name '{self.model_name}'. "
                 f"Available: {list(registry.keys())}"
             )
+        self.class_path = class_path
         module_name, class_name = class_path.rsplit(".", 1)
         model_cls: type[BaseEstimator] = getattr(
             importlib.import_module(module_name), class_name

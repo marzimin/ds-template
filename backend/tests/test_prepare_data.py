@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from src.pipelines.prepare_data import PrepareDataPipeline
+from src.ml.prepare_data import PrepareDataPipeline
 
 _MOCK_CONFIG = {
     "data": {
@@ -18,9 +18,9 @@ def test_run_pipeline():
     data = pd.DataFrame({"col1": [1, 2, 3], "col2": ["A", "B", "C"]})
 
     with (
-        patch("src.pipelines.prepare_data.read_config", return_value=_MOCK_CONFIG),
-        patch("src.pipelines.prepare_data.read_data", return_value=data) as mock_read,
-        patch("src.pipelines.prepare_data.write_data") as mock_write,
+        patch("src.ml.prepare_data.read_config", return_value=_MOCK_CONFIG),
+        patch("src.ml.prepare_data.read_data", return_value=data) as mock_read,
+        patch("src.ml.prepare_data.write_data") as mock_write,
     ):
         pipeline = PrepareDataPipeline()
         pipeline.run()

@@ -15,7 +15,7 @@ from pathlib import Path
 
 from sklearn.datasets import load_breast_cancer
 
-from src.utils.utils import read_config, resolve_project_path
+from src.config import read_config, resolve_project_path
 
 logging.basicConfig(
     level=logging.INFO,

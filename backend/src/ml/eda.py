@@ -5,9 +5,10 @@ from pathlib import Path
 
 import mlflow
 
-from src.pipelines.pipeline import Pipeline
-from src.utils.utils import (
-    _detect_feature_types,
+from src.config import read_config, resolve_project_path
+from src.ml.io import _detect_feature_types, read_data
+from src.ml.pipeline import Pipeline
+from src.ml.plots import (
     _plot_bar_chart,
     _plot_class_distribution,
     _plot_correlation_heatmap,
@@ -15,12 +16,9 @@ from src.utils.utils import (
     _plot_feature_vs_target,
     _plot_histogram,
     _plot_missing_values,
-    normalise_column_name,
-    read_config,
-    read_data,
-    resolve_project_path,
-    setup_mlflow,
 )
+from src.ml.tracking import setup_mlflow
+from src.schemas import normalise_column_name
 
 logging.basicConfig(
     level=logging.INFO,

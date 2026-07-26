@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from src.pipelines.eda import EDAPipeline
+from src.ml.eda import EDAPipeline
 
 _MOCK_CONFIG = {
     "data": {
@@ -62,26 +62,22 @@ def all_plot_patches(tmp_path):
     fake = tmp_path / "plot.png"
     fake.touch()
     patches = {
-        "_plot_histogram": patch(
-            "src.pipelines.eda._plot_histogram", return_value=fake
-        ),
-        "_plot_bar_chart": patch(
-            "src.pipelines.eda._plot_bar_chart", return_value=fake
-        ),
+        "_plot_histogram": patch("src.ml.eda._plot_histogram", return_value=fake),
+        "_plot_bar_chart": patch("src.ml.eda._plot_bar_chart", return_value=fake),
         "_plot_feature_vs_target": patch(
-            "src.pipelines.eda._plot_feature_vs_target", return_value=fake
+            "src.ml.eda._plot_feature_vs_target", return_value=fake
         ),
         "_plot_correlation_heatmap": patch(
-            "src.pipelines.eda._plot_correlation_heatmap", return_value=fake
+            "src.ml.eda._plot_correlation_heatmap", return_value=fake
         ),
         "_plot_class_distribution": patch(
-            "src.pipelines.eda._plot_class_distribution", return_value=fake
+            "src.ml.eda._plot_class_distribution", return_value=fake
         ),
         "_plot_datetime_distribution": patch(
-            "src.pipelines.eda._plot_datetime_distribution", return_value=fake
+            "src.ml.eda._plot_datetime_distribution", return_value=fake
         ),
         "_plot_missing_values": patch(
-            "src.pipelines.eda._plot_missing_values", return_value=fake
+            "src.ml.eda._plot_missing_values", return_value=fake
         ),
     }
     with (
@@ -107,12 +103,12 @@ def all_plot_patches(tmp_path):
 def _common_patches(start_run_cm):
     """Return patches shared across all full-run tests."""
     return [
-        patch("src.pipelines.eda.read_config", return_value=_MOCK_CONFIG),
+        patch("src.ml.eda.read_config", return_value=_MOCK_CONFIG),
         patch("pathlib.Path.exists", return_value=True),
         patch("pathlib.Path.mkdir"),
-        patch("src.pipelines.eda.read_data", return_value=_DUMMY_DF),
-        patch("src.pipelines.eda._detect_feature_types", return_value=_COL_INFO),
-        patch("src.pipelines.eda.setup_mlflow"),
+        patch("src.ml.eda.read_data", return_value=_DUMMY_DF),
+        patch("src.ml.eda._detect_feature_types", return_value=_COL_INFO),
+        patch("src.ml.eda.setup_mlflow"),
         patch("mlflow.active_run", return_value=None),
         patch("mlflow.start_run", return_value=start_run_cm),
         patch("mlflow.log_artifact"),
@@ -122,8 +118,8 @@ def _common_patches(start_run_cm):
 def test_run_raises_when_prepared_data_missing():
     """FileNotFoundError with a helpful message when the prepared CSV is absent."""
     with (
-        patch("src.pipelines.eda.read_config", return_value=_MOCK_CONFIG),
-        patch("src.pipelines.eda.setup_mlflow"),
+        patch("src.ml.eda.read_config", return_value=_MOCK_CONFIG),
+        patch("src.ml.eda.setup_mlflow"),
         patch("pathlib.Path.exists", return_value=False),
     ):
         pipeline = EDAPipeline()
@@ -134,12 +130,12 @@ def test_run_raises_when_prepared_data_missing():
 def test_run_dispatches_correct_plot_per_column(start_run_cm, plot_patches):
     """Histogram is used for numeric columns; bar chart for categorical ones."""
     with (
-        patch("src.pipelines.eda.read_config", return_value=_MOCK_CONFIG),
+        patch("src.ml.eda.read_config", return_value=_MOCK_CONFIG),
         patch("pathlib.Path.exists", return_value=True),
         patch("pathlib.Path.mkdir"),
-        patch("src.pipelines.eda.read_data", return_value=_DUMMY_DF),
-        patch("src.pipelines.eda._detect_feature_types", return_value=_COL_INFO),
-        patch("src.pipelines.eda.setup_mlflow"),
+        patch("src.ml.eda.read_data", return_value=_DUMMY_DF),
+        patch("src.ml.eda._detect_feature_types", return_value=_COL_INFO),
+        patch("src.ml.eda.setup_mlflow"),
         patch("mlflow.active_run", return_value=None),
         patch("mlflow.start_run", return_value=start_run_cm),
         patch("mlflow.log_artifact"),
@@ -159,12 +155,12 @@ def test_run_logs_all_artifacts_to_mlflow(start_run_cm, plot_patches):
     With 2 features: 2 distribution + 2 vs-target + 3 summary = 7 artifacts.
     """
     with (
-        patch("src.pipelines.eda.read_config", return_value=_MOCK_CONFIG),
+        patch("src.ml.eda.read_config", return_value=_MOCK_CONFIG),
         patch("pathlib.Path.exists", return_value=True),
         patch("pathlib.Path.mkdir"),
-        patch("src.pipelines.eda.read_data", return_value=_DUMMY_DF),
-        patch("src.pipelines.eda._detect_feature_types", return_value=_COL_INFO),
-        patch("src.pipelines.eda.setup_mlflow"),
+        patch("src.ml.eda.read_data", return_value=_DUMMY_DF),
+        patch("src.ml.eda._detect_feature_types", return_value=_COL_INFO),
+        patch("src.ml.eda.setup_mlflow"),
         patch("mlflow.active_run", return_value=None),
         patch("mlflow.start_run", return_value=start_run_cm),
         patch("mlflow.log_artifact") as mock_log,
@@ -179,12 +175,12 @@ def test_run_logs_all_artifacts_to_mlflow(start_run_cm, plot_patches):
 def test_run_uses_active_mlflow_run(start_run_cm, plot_patches):
     """When an MLflow run is already active, start_run is not called."""
     with (
-        patch("src.pipelines.eda.read_config", return_value=_MOCK_CONFIG),
+        patch("src.ml.eda.read_config", return_value=_MOCK_CONFIG),
         patch("pathlib.Path.exists", return_value=True),
         patch("pathlib.Path.mkdir"),
-        patch("src.pipelines.eda.read_data", return_value=_DUMMY_DF),
-        patch("src.pipelines.eda._detect_feature_types", return_value=_COL_INFO),
-        patch("src.pipelines.eda.setup_mlflow"),
+        patch("src.ml.eda.read_data", return_value=_DUMMY_DF),
+        patch("src.ml.eda._detect_feature_types", return_value=_COL_INFO),
+        patch("src.ml.eda.setup_mlflow"),
         patch("mlflow.active_run", return_value=MagicMock()),
         patch("mlflow.start_run") as mock_start,
         patch("mlflow.log_artifact"),
@@ -197,15 +193,15 @@ def test_run_uses_active_mlflow_run(start_run_cm, plot_patches):
 def test_run_dispatches_datetime_plot(start_run_cm, plot_patches):
     """_plot_datetime_distribution is called for datetime-typed columns."""
     with (
-        patch("src.pipelines.eda.read_config", return_value=_MOCK_CONFIG),
+        patch("src.ml.eda.read_config", return_value=_MOCK_CONFIG),
         patch("pathlib.Path.exists", return_value=True),
         patch("pathlib.Path.mkdir"),
-        patch("src.pipelines.eda.read_data", return_value=_DUMMY_DF_WITH_DATETIME),
+        patch("src.ml.eda.read_data", return_value=_DUMMY_DF_WITH_DATETIME),
         patch(
-            "src.pipelines.eda._detect_feature_types",
+            "src.ml.eda._detect_feature_types",
             return_value=_COL_INFO_WITH_DATETIME,
         ),
-        patch("src.pipelines.eda.setup_mlflow"),
+        patch("src.ml.eda.setup_mlflow"),
         patch("mlflow.active_run", return_value=None),
         patch("mlflow.start_run", return_value=start_run_cm),
         patch("mlflow.log_artifact"),

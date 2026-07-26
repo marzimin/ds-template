@@ -4,10 +4,10 @@ import logging
 import mlflow
 from mlflow.exceptions import MlflowException
 
-from src.pipelines.eda import EDAPipeline
-from src.pipelines.prepare_data import PrepareDataPipeline
-from src.pipelines.train_model import TrainModelPipeline
-from src.utils.utils import setup_mlflow
+from src.ml.eda import EDAPipeline
+from src.ml.prepare_data import PrepareDataPipeline
+from src.ml.tracking import setup_mlflow
+from src.ml.train_model import TrainModelPipeline
 
 logging.basicConfig(
     level=logging.INFO,
@@ -60,21 +60,12 @@ def main() -> None:
     except RuntimeError as exc:
         raise SystemExit(str(exc)) from exc
 
+    # Scope the handler to run creation only. Wrapping the pipeline bodies too
+    # would relabel any MLflow error raised during a step — a model that fails
+    # to serialise, an artifact that fails to upload — as a connection problem,
+    # hiding the real message.
     try:
-        with mlflow.start_run(run_name=run_name):
-            if args.prepare_data:
-                PrepareDataPipeline().run()
-
-            elif args.eda:
-                EDAPipeline().run()
-
-            elif args.train_model:
-                TrainModelPipeline(run_name=run_name).run()
-
-            else:
-                PrepareDataPipeline().run()
-                EDAPipeline().run()
-                TrainModelPipeline(run_name=run_name).run()
+        active_run = mlflow.start_run(run_name=run_name)
     except MlflowException as exc:
         raise SystemExit(
             "Could not create an MLflow run at "
@@ -82,6 +73,21 @@ def main() -> None:
             "`mlflow server --host 127.0.0.1 --port 5000`, or set "
             "MLFLOW_TRACKING_URI to a reachable server."
         ) from exc
+
+    with active_run:
+        if args.prepare_data:
+            PrepareDataPipeline().run()
+
+        elif args.eda:
+            EDAPipeline().run()
+
+        elif args.train_model:
+            TrainModelPipeline(run_name=run_name).run()
+
+        else:
+            PrepareDataPipeline().run()
+            EDAPipeline().run()
+            TrainModelPipeline(run_name=run_name).run()
 
 
 if __name__ == "__main__":
