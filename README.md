@@ -13,6 +13,7 @@ data/             ← drop your data here
 outputs/          ← generated plots and reports
 .env              ← shared environment for backend, Docker, and compose
 backend/          ← Python code (pipelines, ML, API)
+frontend/         ← TypeScript/React app that displays model outputs
 ```
 
 New to web application structure? [`docs/architecture.md`](docs/architecture.md)
@@ -99,13 +100,14 @@ A `Makefile` at the repository root wraps the common tasks so you do not have to
 change directory:
 
 ```bash
-make setup        # everything above
-make test         # backend test suite
-make lint         # all pre-commit hooks
-make mlflow       # start a local tracking server
+make setup        # install both halves, hooks, and the demo dataset
+make test         # every test suite (backend + frontend)
+make lint         # lint everything
 make pipeline     # prepare -> EDA -> train
-make api          # start the FastAPI server (docs at /docs)
-make hooks        # reinstall the git pre-commit hook
+make mlflow       # start a local tracking server        (terminal 1)
+make api          # start the FastAPI server             (terminal 2)
+make web          # start the frontend dev server        (terminal 3)
+make types        # regenerate frontend types from the API
 make help         # list every target
 ```
 
@@ -230,6 +232,64 @@ No feature name is hardcoded anywhere in the API. `GET /api/predict/schema`
 reports what the current model expects, including representative values from the
 logged input example, which is what lets a frontend build its form at runtime
 and keep working when you swap datasets.
+
+---
+
+## The web application
+
+The full app is three processes, one per terminal:
+
+```bash
+make mlflow     # terminal 1 — tracking server and model registry
+make api        # terminal 2 — loads the model, answers requests
+make web        # terminal 3 — serves the page
+```
+
+Then open **[http://localhost:5173](http://localhost:5173)**.
+
+> Use `localhost`, not `127.0.0.1`. Vite binds the hostname `localhost`, which
+> often resolves to IPv6 `::1`, so `127.0.0.1:5173` can refuse the connection.
+
+Three screens:
+
+| Screen | What it does |
+| --- | --- |
+| **Predict** | A form generated from the model's signature, pre-filled with a real row from the logged input example. Submit for a prediction and class probabilities. |
+| **Runs** | Every training run with its metrics. Columns are derived from what was logged. |
+| **Run detail** | Metrics, parameters, and a gallery of that run's EDA and evaluation plots. |
+
+The header shows whether the API is reachable and which model version is loaded,
+with a **reload** button that picks up a newly trained version without
+restarting anything.
+
+### Keeping the frontend dataset-agnostic
+
+New to frontend work? [`docs/architecture.md`](docs/architecture.md) explains
+React, components, and state in data science terms. The four rules that keep
+this template reusable:
+
+1. **No feature name appears in frontend code.** The form is built from
+   `GET /api/predict/schema` at runtime. Retrain on different data and the form
+   changes by itself.
+2. **Table columns come from the data.** The runs dashboard shows the union of
+   metric keys it actually receives, so a regression pipeline logging
+   `test_rmse` displays with no code change.
+3. **Types are generated, never hand-written.** `make types` regenerates
+   `frontend/src/api/schema.d.ts` from the API's OpenAPI document. Rename a
+   Pydantic field and the frontend fails to compile at exactly the line that
+   needs updating.
+4. **"No model yet" is a normal state, not an error.** A fresh clone shows
+   guidance and the command to run, not a red failure.
+
+Both generated files (`openapi.json` and `schema.d.ts`) are committed so a fresh
+clone builds without a running backend. Re-run `make types` after changing any
+request or response shape.
+
+### Restyling
+
+`frontend/src/styles.css` is plain CSS with custom properties at the top. Change
+the variables in `:root` to restyle the whole app; light and dark are both
+handled. There is no CSS framework to learn.
 
 ---
 
@@ -366,6 +426,20 @@ backend/
         ├── deps.py         # Shared dependencies (model, config, MLflow client)
         ├── contracts.py    # Request/response payload shapes (Pydantic)
         └── routers/        # health, predict, runs
+frontend/
+├── package.json            # Node dependencies and scripts
+├── vite.config.ts          # Dev server, /api proxy, test config
+└── src/
+    ├── main.tsx            # Startup: mounts React into index.html
+    ├── App.tsx             # Routing table
+    ├── styles.css          # Plain CSS; restyle via the variables at the top
+    ├── api/
+    │   ├── openapi.json    # Generated from the backend — do not hand-edit
+    │   ├── schema.d.ts     # Generated TypeScript types — do not hand-edit
+    │   ├── client.ts       # fetch wrapper and typed errors
+    │   └── hooks.ts        # One data-fetching hook per endpoint
+    ├── components/         # FeatureForm, ArtifactGallery, Layout, States
+    └── pages/              # Predict, Runs, RunDetail
 ```
 
 Three words are easy to confuse in a repository that has both ML and web code,
@@ -416,12 +490,13 @@ pre-commit run --all-files
 
 ## Testing
 
-Tests live in the `backend/tests/` directory.
-
-Run all tests with:
+Backend tests live in `backend/tests/`, frontend tests alongside the code they
+cover in `frontend/src/`.
 
 ```bash
-cd backend && uv run pytest
+make test              # both suites
+make test-backend      # pytest
+make test-frontend     # vitest
 ```
 
 ---

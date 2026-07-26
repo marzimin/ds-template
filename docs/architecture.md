@@ -25,12 +25,11 @@ This document describes the target architecture. Not all of it exists yet.
 | Pipelines (`prepare` → `EDA` → `train`) | Built |
 | MLflow tracking, model signature, Model Registry | Built |
 | FastAPI layer (`backend/src/api/`) | Built |
-| React/TypeScript frontend (`frontend/`) | Planned — phase 4 |
+| React/TypeScript frontend (`frontend/`) | Built |
 | `docker compose` orchestration | Planned — phase 5 |
 
-Until the frontend exists, the browser-facing half of this document is best
-explored through the API's own interactive documentation at
-[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) (`make api`).
+Until compose exists, the three processes are started separately — see
+[Running the system](#10-what-running-the-system-looks-like).
 
 ---
 
@@ -305,6 +304,94 @@ hardcoding `accuracy` and `f1_score`.
 
 ---
 
+## 7b. The frontend, for someone who has never written one
+
+Four ideas cover most of what the `frontend/` directory is doing.
+
+**HTML is structure, CSS is appearance, JavaScript is behaviour.** A page is a
+tree of elements (`<h1>`, `<table>`, `<input>`); CSS rules say how they look;
+JavaScript changes them in response to events. TypeScript is JavaScript with
+type annotations — the same relationship as adding type hints to Python, with
+the same benefit: mistakes surface before the code runs.
+
+**React lets you write the page as functions.** Instead of manually finding an
+element and updating it, you write a function that returns what the page *should*
+look like given some data, and React works out the minimal changes to the real
+page. The syntax that looks like HTML inside TypeScript is called JSX; it
+compiles to ordinary function calls.
+
+```tsx
+function Metric({ label, value }: { label: string; value: number }) {
+  return <div className="metric">{label}: {value.toFixed(4)}</div>;
+}
+```
+
+That is a *component* — a reusable piece of page, closely analogous to a
+function that returns a matplotlib axis.
+
+**Components can hold state, and state changes redraw the page.** `useState`
+gives a component a value plus a setter; calling the setter re-runs the function
+and React updates the display. This is how typing into the prediction form
+updates what will be submitted.
+
+**Data fetching is its own problem, so a library handles it.** Every request has
+three possible states — loading, failed, loaded — and forgetting one produces a
+blank screen. TanStack Query manages that, plus caching and refetching, so each
+page renders three explicit branches:
+
+```tsx
+if (runs.isPending) return <Loading />;
+if (runs.isError) return <ErrorState error={runs.error} />;
+return <RunTable runs={runs.data} />;
+```
+
+### What lives where
+
+```text
+frontend/src/
+├── main.tsx              Startup: mounts React into index.html
+├── App.tsx               Routing table — which URL shows which page
+├── api/
+│   ├── openapi.json      Generated from the backend. Do not hand-edit.
+│   ├── schema.d.ts       Generated TypeScript types. Do not hand-edit.
+│   ├── client.ts         fetch wrapper; turns failures into typed errors
+│   └── hooks.ts          One hook per endpoint (loading/error/caching)
+├── components/           Reusable pieces: FeatureForm, ArtifactGallery, States
+├── pages/                One per screen: Predict, Runs, RunDetail
+└── styles.css            Plain CSS; restyle by editing the variables at the top
+```
+
+## 7c. Keeping the frontend adaptable across ML templates
+
+Four rules do the work. Each exists because breaking it would tie the UI to one
+dataset.
+
+**1. Never name a feature in frontend code.** `FeatureForm` receives the list
+from `GET /api/predict/schema` and renders one control per entry, choosing the
+widget from the declared `kind`. Swap dataset, retrain, reload — the form
+changes. Two tests assert this by rendering two entirely different schemas and
+checking that the breast-cancer fields are absent from the second.
+
+**2. Derive table columns from the data.** The runs dashboard collects the union
+of metric keys across runs rather than hardcoding `accuracy` and `f1_score`. A
+regression pipeline logging `test_rmse` shows it immediately — also covered by a
+test.
+
+**3. Generate types; never hand-write them.** `schema.d.ts` comes from the
+backend's OpenAPI document via `make types`. Rename a Pydantic field and the
+frontend fails to compile at the line that needs changing, instead of silently
+rendering `undefined`.
+
+**4. Treat "no model yet" as a first-class state, not an error.** A fresh clone
+has nothing trained, so the API answers `503`. The UI shows that as guidance
+with the command to run — deliberately *not* styled as a failure, because
+nothing has failed.
+
+Two supporting habits: keep validation on the server (the form coerces types for
+convenience, but the backend's `422` is the authority, so rules live in one
+place), and keep styling in CSS variables at the top of `styles.css` so
+rebranding does not mean touching components.
+
 ## 8. Vocabulary, translated
 
 | Web term | What it means | Closest thing you already know |
@@ -320,6 +407,12 @@ hardcoding `accuracy` and `f1_score`.
 | **Process** | A running program | One `python` invocation |
 | **CORS** | Browser rule about which sites may call the API | An allow-list |
 | **SPA** | Single-page app: JS redraws instead of reloading | A notebook that updates a cell's output in place |
+| **Component** | A function returning a piece of page | A function returning a plot axis |
+| **Props** | Arguments passed into a component | Function arguments |
+| **State** | Data a component owns; changing it redraws | A mutable local variable that triggers a re-plot |
+| **Hook** | A `use…` function adding behaviour to a component | A decorator or context manager |
+| **JSX** | HTML-looking syntax inside TypeScript | An f-string that builds structure, not text |
+| **Vite** | Dev server and bundler | `uv` plus a hot-reloading runner |
 
 ### Pydantic and Pandera are the same idea
 
@@ -372,23 +465,29 @@ going away.
 
 ### Full application
 
-Three processes, all staying up. `docker compose` (phase 5) will start them
-together.
+Three processes, all staying up, one terminal each. `docker compose` (phase 5)
+will start them together.
 
-| Process | Port | Role |
-| --- | --- | --- |
-| MLflow server | 5000 | Stores runs and serves the Model Registry |
-| FastAPI (uvicorn) | 8000 | Loads the model, answers requests |
-| Vite dev server | 5173 | Serves the React page to your browser |
+| Terminal | Command | Port | Role |
+| --- | --- | --- | --- |
+| 1 | `make mlflow` | 5000 | Stores runs and serves the Model Registry |
+| 2 | `make api` | 8000 | Loads the model, answers requests |
+| 3 | `make web` | 5173 | Serves the React page to your browser |
 
-You open `http://localhost:5173`. That page then calls
-`http://localhost:8000/api/...` behind the scenes. You never open port 8000
-yourself, though you can — `/docs` lives there.
+Open **`http://localhost:5173`**. The page then calls `/api/...` on its own
+origin, and the Vite dev server forwards those to port 8000. That proxy is why
+frontend code uses relative URLs and has no backend address compiled into it —
+the same code works unchanged when one server serves both in production.
 
-> On macOS, port 5000 is often occupied by the AirPlay Receiver, which answers
-> with a `403` and makes MLflow look like it is running when it is not. Either
-> disable AirPlay Receiver in System Settings or use a different port and set
-> `MLFLOW_TRACKING_URI` accordingly.
+Two local gotchas worth knowing before they cost you an hour:
+
+- **Use `localhost`, not `127.0.0.1`, for the dev server.** Vite binds the
+  hostname `localhost`, which on many systems resolves to IPv6 `::1`, so
+  `http://127.0.0.1:5173` can refuse the connection while `localhost` works.
+- **On macOS, port 5000 is often taken by the AirPlay Receiver**, which answers
+  with a `403` and makes MLflow look like it is running when it is not. Disable
+  AirPlay Receiver in System Settings, or use another port and set
+  `MLFLOW_TRACKING_URI` to match.
 
 ---
 
@@ -421,10 +520,17 @@ layer failed*. This table is the fastest way to narrow it down.
 | API fails at startup | MLflow unreachable | Is the MLflow server up? Is `MLFLOW_TRACKING_URI` right? |
 | `/docs` works but the page does not | Frontend or CORS | Browser developer console, Network tab |
 | Metrics dashboard empty, predictions fine | No runs logged | Open the MLflow UI directly |
+| Header says "API unreachable" | API down, or proxy misconfigured | `curl http://localhost:5173/api/health` |
+| Browser cannot connect to the dev server | IPv6 vs IPv4 | Use `localhost:5173`, not `127.0.0.1:5173` |
+| Frontend fails to compile after an API change | Types are stale | `make types` |
 
 The general principle: **test from the inside out.** MLflow UI first, then
 `/docs`, then the React page. Whichever is the innermost broken layer is where
 the problem is.
+
+The status pill in the page header is the quick version of this: it reports the
+API's reachability and whether a model is loaded on every screen, so an empty
+panel is never ambiguous.
 
 ---
 
