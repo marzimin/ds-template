@@ -3,29 +3,25 @@
 import importlib
 import logging
 import os
-from typing import Optional, cast
+from pathlib import Path
+from typing import Any, Optional, cast
 
-import matplotlib.pyplot as plt
 import mlflow
 import pandas as pd
-import seaborn as sns
 from sklearn.base import BaseEstimator
 from sklearn.metrics import (
     accuracy_score,
-    auc,
     classification_report,
-    confusion_matrix,
     f1_score,
-    precision_recall_curve,
     precision_score,
     recall_score,
-    roc_curve,
 )
 from sklearn.model_selection import train_test_split
 
 from src.config import read_config, resolve_project_path, target_column
 from src.ml.io import read_data, write_data
 from src.ml.pipeline import Pipeline
+from src.ml.plots import _plot_confusion_matrix, _plot_pr_curve, _plot_roc_curve
 from src.ml.tracking import (
     active_or_new_run,
     build_signature,
@@ -121,10 +117,11 @@ class TrainModelPipeline(Pipeline):
                 mlflow.log_metric(f"test_{name}", test_val)
                 logger.info(f"MODEL DRIFT: Test {name.capitalize()} = {test_val:.4f}")
 
-            self._log_confusion_matrix(X_test, y_test)
-            self._log_classification_report(X_test, y_test)
-            self._log_roc_curve(X_test, y_test)
-            self._log_pr_curve(features=X_test, target=y_test)
+            # Produce every artifact, then log them in one pass — the same
+            # shape EDAPipeline uses.
+            for path in self._build_artifacts(X_test, y_test):
+                mlflow.log_artifact(str(path), artifact_path=path.parent.name)
+                logger.info("Saved %s and logged it to MLflow.", path)
 
             if self.model is not None:
                 # A signature is logged rather than left optional: it is what
@@ -281,181 +278,96 @@ class TrainModelPipeline(Pipeline):
         )
         return model_cls(**self.model_params)
 
-    # Model metrics
+    # Training artifacts
 
-    def _log_confusion_matrix(self, features: pd.DataFrame, target: pd.Series) -> None:
-        """Log a confusion matrix as a .png to MLflow."""
-        logger.info("Logging the confusion matrix.")
+    def _build_artifacts(self, features: pd.DataFrame, target: pd.Series) -> list[Path]:
+        """Produce the training artifacts and return their paths.
+
+        Drawing lives in :mod:`src.ml.plots`; this method decides what to draw
+        and where to put it. The caller logs the returned paths, so the model
+        guard and the MLflow calls each happen once rather than once per
+        artifact.
+
+        Args:
+            features: Evaluation feature matrix.
+            target: True labels for evaluation.
+
+        Returns:
+            Paths to every artifact produced, in the order created.
+        """
         if self.model is None:
-            logger.warning("Model not available; skipping confusion matrix logging.")
-            return
-
-        y_pred = self.model.predict(features)
-        cm = confusion_matrix(target, y_pred, labels=self.class_labels)
-
-        plt.figure(figsize=(6, 4))
-        sns.heatmap(
-            cm,
-            annot=True,
-            fmt="d",
-            cmap="Blues",
-            xticklabels=[f"Predicted {label}" for label in self.class_labels],
-            yticklabels=[f"Actual {label}" for label in self.class_labels],
-        )
-        plt.title("Confusion Matrix")
-        plt.ylabel("Actual")
-        plt.xlabel("Predicted")
+            logger.warning("Model not available; skipping artifacts.")
+            return []
 
         plots_dir = resolve_project_path(os.getenv("LOCAL_PLOTS_PATH", "outputs/plots"))
-        plots_dir.mkdir(parents=True, exist_ok=True)
-
-        cm_path = plots_dir / "confusion_matrix.png"
-        plt.savefig(cm_path, bbox_inches="tight")
-        plt.close()
-
-        mlflow.log_artifact(str(cm_path), artifact_path=cm_path.parent.name)
-        logger.info(
-            "Confusion matrix saved locally to %s and logged to MLflow.", cm_path
-        )
-
-    def _log_classification_report(
-        self, features: pd.DataFrame, target: pd.Series
-    ) -> None:
-        """Log a classification report as a text artifact to MLflow."""
-        logger.info("Logging the classification report.")
-        if self.model is None:
-            logger.warning(
-                "Model not available; skipping classification report logging."
-            )
-            return
-
-        y_pred = self.model.predict(features)
-        report = classification_report(target, y_pred, zero_division=0)
-
         reports_dir = resolve_project_path(
             os.getenv("LOCAL_REPORTS_PATH", "outputs/reports")
         )
+        plots_dir.mkdir(parents=True, exist_ok=True)
         reports_dir.mkdir(parents=True, exist_ok=True)
 
-        report_path = reports_dir / "classification_report.txt"
-        with open(report_path, "w", encoding="utf-8") as f:
-            f.write(report)
-
-        mlflow.log_artifact(str(report_path), artifact_path=report_path.parent.name)
-        logger.info(
-            "Classification report saved locally to %s and logged to MLflow.",
-            report_path,
-        )
-
-    def _log_roc_curve(self, features: pd.DataFrame, target: pd.Series) -> None:
-        """Log a ROC curve plot as an artifact to MLflow (binary targets only)."""
-        logger.info("Logging the ROC curve.")
-        if self.model is None:
-            logger.warning("Model not available; skipping ROC logging.")
-            return
-
-        if hasattr(self.model, "predict_proba"):
-            y_pred_prob = self._positive_class_scores(features)
-        elif hasattr(self.model, "decision_function"):
-            raw_scores = self.model.decision_function(features)
-            if hasattr(raw_scores, "ndim") and raw_scores.ndim > 1:
-                y_pred_prob = pd.Series(raw_scores[:, 1])
-            else:
-                y_pred_prob = pd.Series(raw_scores)
-        else:
-            logger.warning("Model does not expose predict_proba or decision_function.")
-            return
-
+        y_pred = self.model.predict(features)
         positive_label = self.class_labels[-1]
-        fpr, tpr, _ = roc_curve(target, y_pred_prob, pos_label=positive_label)
-        roc_auc = auc(fpr, tpr)
 
-        plt.figure()
-        plt.plot(fpr, tpr, label=f"ROC Curve (area = {roc_auc:.2f})")
-        plt.plot([0, 1], [0, 1], linestyle="--")
-        plt.xlabel("False Positive Rate")
-        plt.ylabel("True Positive Rate")
-        plt.title("ROC Curve")
-        plt.legend()
-        plt.grid()
+        artifacts = [
+            _plot_confusion_matrix(target, y_pred, self.class_labels, plots_dir),
+            self._write_classification_report(target, y_pred, reports_dir),
+        ]
 
-        plots_dir = resolve_project_path(os.getenv("LOCAL_PLOTS_PATH", "outputs/plots"))
-        plots_dir.mkdir(parents=True, exist_ok=True)
-
-        roc_path = plots_dir / "roc_curve.png"
-        plt.savefig(roc_path, bbox_inches="tight")
-        plt.close()
-
-        mlflow.log_artifact(str(roc_path), artifact_path=roc_path.parent.name)
-        logger.info("ROC curve saved locally to %s and logged to MLflow.", roc_path)
-
-    def _log_pr_curve(self, features: pd.DataFrame, target: pd.Series) -> None:
-        """Log a Precision Recall Curve an an artifact to MLflow (binary targets only)."""
-        logger.info(msg="Logging the Precision Recall Curve.")
-        if self.model is None:
-            logger.warning(msg="Model not available; skipping PRC logging.")
-            return
-
-        if hasattr(self.model, "predict_proba"):
-            y_pred_prob = self._positive_class_scores(features)
-        elif hasattr(self.model, "decision_function"):
-            raw_scores = self.model.decision_function(features)
-            if hasattr(raw_scores, "ndim") and raw_scores.ndim > 1:
-                y_pred_prob = pd.Series(raw_scores[:, 1])
-            else:
-                y_pred_prob = pd.Series(raw_scores)
+        scores = self._positive_class_scores(features)
+        if scores is None:
+            logger.warning(
+                "Model exposes neither predict_proba nor decision_function; "
+                "skipping the ROC and precision-recall curves."
+            )
         else:
-            logger.warning("Model does not expose predict_proba or decision_function.")
-            return
+            artifacts.append(_plot_roc_curve(target, scores, positive_label, plots_dir))
+            artifacts.append(_plot_pr_curve(target, scores, positive_label, plots_dir))
 
-        positive_label = self.class_labels[-1]
-        precision, recall, _ = precision_recall_curve(
-            target, y_pred_prob, pos_label=positive_label
-        )
-        prc_auc = auc(recall, precision)
+        return artifacts
 
-        prevalence = float((target == positive_label).mean())
+    @staticmethod
+    def _write_classification_report(
+        target: pd.Series, y_pred: Any, output_dir: Path
+    ) -> Path:
+        """Write a text classification report and return its path."""
+        report = classification_report(target, y_pred, zero_division=0)
+        path = output_dir / "classification_report.txt"
+        path.write_text(report, encoding="utf-8")
+        return path
 
-        plt.figure()
-        plt.plot(
-            recall, precision, label=f"Precision Recall Curve (area = {prc_auc:.2f})"
-        )
-        plt.axhline(
-            y=prevalence,
-            linestyle="--",
-            color="grey",
-            label=f"No skill (prevalence = {prevalence:.2f})",
-        )
-        plt.xlabel("Recall")
-        plt.ylabel("Precision")
-        plt.title("Precision Recall Curve")
-        plt.legend()
-        plt.grid()
+    def _positive_class_scores(self, features: pd.DataFrame) -> Optional[pd.Series]:
+        """Return positive-class scores, or None if the model exposes none.
 
-        plots_dir = resolve_project_path(os.getenv("LOCAL_PLOTS_PATH", "outputs/plots"))
-        plots_dir.mkdir(parents=True, exist_ok=True)
+        Prefers ``predict_proba`` and falls back to ``decision_function``. Both
+        the ROC and precision-recall curves need these, so the fallback lives
+        here rather than being duplicated at each call site.
 
-        pr_curve_path = plots_dir / "pr_curve.png"
-        plt.savefig(pr_curve_path, bbox_inches="tight")
-        plt.close()
-
-        mlflow.log_artifact(str(pr_curve_path), artifact_path=pr_curve_path.parent.name)
-        logger.info(
-            "Precision Recall curve saved locally to %s and logged to MLflow.",
-            pr_curve_path,
-        )
-
-    def _positive_class_scores(self, features: pd.DataFrame) -> pd.Series:
-        """Return probability scores for the positive class label."""
+        Raises:
+            RuntimeError: If the model has not been trained yet.
+            ValueError: If the configured positive class is absent from the
+                model's own classes.
+        """
         if self.model is None:
             raise RuntimeError("Model has not been trained.")
-        proba = self.model.predict_proba(features)
-        model_classes = cast(list[object], list(getattr(self.model, "classes_", [])))
-        positive_label = self.class_labels[-1]
-        if positive_label not in model_classes:
-            raise ValueError(
-                f"Positive class {positive_label!r} was not found in model classes "
-                f"{model_classes}."
+
+        if hasattr(self.model, "predict_proba"):
+            proba = self.model.predict_proba(features)
+            model_classes = cast(
+                list[object], list(getattr(self.model, "classes_", []))
             )
-        positive_index = model_classes.index(positive_label)
-        return pd.Series(proba[:, positive_index])
+            positive_label = self.class_labels[-1]
+            if positive_label not in model_classes:
+                raise ValueError(
+                    f"Positive class {positive_label!r} was not found in model "
+                    f"classes {model_classes}."
+                )
+            return pd.Series(proba[:, model_classes.index(positive_label)])
+
+        if hasattr(self.model, "decision_function"):
+            raw_scores = self.model.decision_function(features)
+            if hasattr(raw_scores, "ndim") and raw_scores.ndim > 1:
+                return pd.Series(raw_scores[:, 1])
+            return pd.Series(raw_scores)
+
+        return None

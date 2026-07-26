@@ -1,16 +1,28 @@
 """Matplotlib/seaborn plotting helpers used by the EDA and training pipelines.
 
-Kept apart from :mod:`src.ml.io` so that modules needing only data access — the
-API layer in particular — do not pull matplotlib and seaborn into their import
-graph.
+This is the only module that imports matplotlib and seaborn, so that anything
+needing data access without the plotting stack — the API layer in particular —
+stays cheap to import.
+
+Every function here follows the same shape: draw, save to ``output_dir``, and
+return the resulting :class:`~pathlib.Path`. Deciding what to do with that file
+is the caller's job, which is what lets both pipelines collect their artifacts
+and log them to MLflow in one place.
 """
 
 from pathlib import Path
+from typing import Any, Sequence
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import pandas as pd
 import seaborn as sns
+from sklearn.metrics import (
+    auc,
+    confusion_matrix,
+    precision_recall_curve,
+    roc_curve,
+)
 
 
 def _datetime_period(series: pd.Series) -> tuple[pd.Categorical, str]:
@@ -319,6 +331,129 @@ def _plot_missing_values(df: pd.DataFrame, output_dir: Path) -> Path:
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{x:.0%}"))
     ax.tick_params(axis="x", rotation=45)
     path = output_dir / "missing_values.png"
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+# Training plots
+
+
+def _plot_confusion_matrix(
+    y_true: pd.Series,
+    y_pred: Any,
+    class_labels: Sequence[Any],
+    output_dir: Path,
+) -> Path:
+    """Plot a confusion matrix for a classifier's predictions.
+
+    Args:
+        y_true: True labels.
+        y_pred: Predicted labels, aligned with ``y_true``.
+        class_labels: Label order for the axes.
+        output_dir: Directory where the plot file is saved.
+
+    Returns:
+        Path to the saved plot file.
+    """
+    cm = confusion_matrix(y_true, y_pred, labels=list(class_labels))
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    sns.heatmap(
+        cm,
+        annot=True,
+        fmt="d",
+        cmap="Blues",
+        xticklabels=[f"Predicted {label}" for label in class_labels],
+        yticklabels=[f"Actual {label}" for label in class_labels],
+        ax=ax,
+    )
+    ax.set_title("Confusion Matrix")
+    ax.set_ylabel("Actual")
+    ax.set_xlabel("Predicted")
+
+    path = output_dir / "confusion_matrix.png"
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+def _plot_roc_curve(
+    y_true: pd.Series,
+    scores: pd.Series,
+    positive_label: Any,
+    output_dir: Path,
+) -> Path:
+    """Plot a ROC curve for a binary classifier.
+
+    Args:
+        y_true: True labels.
+        scores: Positive-class scores, aligned with ``y_true``.
+        positive_label: Label treated as the positive class.
+        output_dir: Directory where the plot file is saved.
+
+    Returns:
+        Path to the saved plot file.
+    """
+    fpr, tpr, _ = roc_curve(y_true, scores, pos_label=positive_label)
+    roc_auc = auc(fpr, tpr)
+
+    fig, ax = plt.subplots()
+    ax.plot(fpr, tpr, label=f"ROC Curve (area = {roc_auc:.2f})")
+    ax.plot([0, 1], [0, 1], linestyle="--")
+    ax.set_xlabel("False Positive Rate")
+    ax.set_ylabel("True Positive Rate")
+    ax.set_title("ROC Curve")
+    ax.legend()
+    ax.grid()
+
+    path = output_dir / "roc_curve.png"
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+def _plot_pr_curve(
+    y_true: pd.Series,
+    scores: pd.Series,
+    positive_label: Any,
+    output_dir: Path,
+) -> Path:
+    """Plot a precision-recall curve for a binary classifier.
+
+    A no-skill baseline is drawn at the positive class prevalence, which is the
+    precision a random classifier would achieve.
+
+    Args:
+        y_true: True labels.
+        scores: Positive-class scores, aligned with ``y_true``.
+        positive_label: Label treated as the positive class.
+        output_dir: Directory where the plot file is saved.
+
+    Returns:
+        Path to the saved plot file.
+    """
+    precision, recall, _ = precision_recall_curve(
+        y_true, scores, pos_label=positive_label
+    )
+    prc_auc = auc(recall, precision)
+    prevalence = float((y_true == positive_label).mean())
+
+    fig, ax = plt.subplots()
+    ax.plot(recall, precision, label=f"Precision Recall Curve (area = {prc_auc:.2f})")
+    ax.axhline(
+        y=prevalence,
+        linestyle="--",
+        color="grey",
+        label=f"No skill (prevalence = {prevalence:.2f})",
+    )
+    ax.set_xlabel("Recall")
+    ax.set_ylabel("Precision")
+    ax.set_title("Precision Recall Curve")
+    ax.legend()
+    ax.grid()
+
+    path = output_dir / "pr_curve.png"
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
     return path
