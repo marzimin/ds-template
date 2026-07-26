@@ -24,9 +24,13 @@ This document describes the target architecture. Not all of it exists yet.
 | --- | --- |
 | Pipelines (`prepare` → `EDA` → `train`) | Built |
 | MLflow tracking, model signature, Model Registry | Built |
-| FastAPI layer (`backend/src/api/`) | Planned — phase 3 |
+| FastAPI layer (`backend/src/api/`) | Built |
 | React/TypeScript frontend (`frontend/`) | Planned — phase 4 |
 | `docker compose` orchestration | Planned — phase 5 |
+
+Until the frontend exists, the browser-facing half of this document is best
+explored through the API's own interactive documentation at
+[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) (`make api`).
 
 ---
 

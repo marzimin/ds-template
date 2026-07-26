@@ -17,6 +17,8 @@ dependencies = [
     "matplotlib>=3.9",
     "python-dotenv>=1.0",
     "pyyaml>=6.0",
+    "fastapi>=0.135.3",
+    "uvicorn[standard]>=0.44.0",
 ]
 
 [project.optional-dependencies]
@@ -28,6 +30,8 @@ dev = [
     "types-PyYAML>=6.0",
     "ipykernel>=6.0",
     "jupyterlab>=4.5.9",
+    "httpx>=0.28.1",
+    "httpx2>=2.9.1",
 ]
 
 [project.scripts]

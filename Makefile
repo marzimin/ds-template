@@ -4,10 +4,12 @@
 PYTHON_VERSION ?= 3.12
 MLFLOW_HOST ?= 127.0.0.1
 MLFLOW_PORT ?= 5000
+API_HOST ?= 127.0.0.1
+API_PORT ?= 8000
 BACKEND := backend
 
 .DEFAULT_GOAL := help
-.PHONY: help setup hooks test lint pipeline mlflow sample-data docker-build clean
+.PHONY: help setup hooks test lint pipeline mlflow api sample-data docker-build clean
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -30,6 +32,11 @@ pipeline: ## Run the full ML pipeline (prepare -> EDA -> train)
 
 mlflow: ## Start a local MLflow tracking server
 	cd $(BACKEND) && uv run mlflow server --host $(MLFLOW_HOST) --port $(MLFLOW_PORT)
+
+api: ## Start the FastAPI server (interactive docs at /docs)
+	@echo "API docs: http://$(API_HOST):$(API_PORT)/docs"
+	cd $(BACKEND) && uv run uvicorn src.api.app:app --reload \
+		--host $(API_HOST) --port $(API_PORT)
 
 sample-data: ## Regenerate the demo dataset into data/raw/
 	cd $(BACKEND) && uv run python scripts/generate_sample_data.py

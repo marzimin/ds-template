@@ -104,6 +104,7 @@ make test         # backend test suite
 make lint         # all pre-commit hooks
 make mlflow       # start a local tracking server
 make pipeline     # prepare -> EDA -> train
+make api          # start the FastAPI server (docs at /docs)
 make hooks        # reinstall the git pre-commit hook
 make help         # list every target
 ```
@@ -188,6 +189,47 @@ steps sequentially.
 Without flags, all three steps run sequentially (prepare → EDA → train).
 
 MLflow will track metrics, models, and plots for each run.
+
+---
+
+### Serving the model over HTTP
+
+The pipeline is one way in; the API is the other. It reads the latest registered
+model and exposes it over HTTP so a browser — or any other client — can use it.
+
+```bash
+make mlflow     # terminal 1
+make api        # terminal 2
+```
+
+Then open [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) for
+interactive documentation with a form to call every endpoint. This is the
+quickest way to exercise the backend, and it works before any frontend exists.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/health` | Is the service up, and is a model loaded? |
+| `GET /api/predict/schema` | The features a prediction needs, from the model signature |
+| `POST /api/predict` | Predict for one record |
+| `POST /api/predict/reload` | Pick up a newly trained version without restarting |
+| `GET /api/runs` | List runs with their metrics |
+| `GET /api/runs/{id}` | One run with parameters and tags |
+| `GET /api/runs/{id}/artifacts` | List a run's artifacts |
+| `GET /api/runs/{id}/artifacts/file` | Download one artifact, such as an EDA plot |
+
+**Before a model has been trained**, the API still starts. `/api/health` reports
+`model_available: false` and prediction endpoints return `503` explaining how to
+fix it. Train with `make pipeline` and the next request picks the model up — no
+restart needed.
+
+**After retraining while the API is running**, call `POST /api/predict/reload`.
+A server holds one model in memory for the life of the process, so without this
+it would keep serving the previous version.
+
+No feature name is hardcoded anywhere in the API. `GET /api/predict/schema`
+reports what the current model expects, including representative values from the
+logged input example, which is what lets a frontend build its form at runtime
+and keep working when you swap datasets.
 
 ---
 
@@ -310,14 +352,20 @@ backend/
     ├── main.py             # CLI entry point
     ├── config.py           # Paths, .env, and cfg/config.yaml access
     ├── schemas.py          # Pandera data validation schemas
-    └── ml/
-        ├── pipeline.py     # Abstract Pipeline base class
-        ├── prepare_data.py # Data loading and transformations
-        ├── eda.py          # Exploratory plots logged to MLflow
-        ├── train_model.py  # Model training with MLflow tracking
-        ├── io.py           # CSV read/write with schema validation
-        ├── plots.py        # Matplotlib/seaborn plotting helpers
-        └── tracking.py     # MLflow setup and flavor-aware model logging
+    ├── ml/
+    │   ├── pipeline.py     # Abstract Pipeline base class
+    │   ├── prepare_data.py # Data loading and transformations
+    │   ├── eda.py          # Exploratory plots logged to MLflow
+    │   ├── train_model.py  # Model training with MLflow tracking
+    │   ├── inference.py    # Loading a registered model and predicting
+    │   ├── io.py           # CSV read/write with schema validation
+    │   ├── plots.py        # Matplotlib/seaborn plotting helpers
+    │   └── tracking.py     # MLflow setup and flavor-aware model logging
+    └── api/
+        ├── app.py          # FastAPI application factory
+        ├── deps.py         # Shared dependencies (model, config, MLflow client)
+        ├── models.py       # Request/response contracts (Pydantic)
+        └── routers/        # health, predict, runs
 ```
 
 `config.py` and `schemas.py` sit at the top of the package because they are the
