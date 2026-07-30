@@ -43,7 +43,7 @@ it writes files, and it exits. The Python process lives for a few seconds. If it
 hits bad data it raises, prints a traceback, and dies — which is exactly the
 behaviour you want, because you are standing right there reading the output.
 
-```
+```text
 start ──> read CSV ──> transform ──> train ──> log to MLflow ──> exit
 ```
 
@@ -52,7 +52,7 @@ nothing. It waits. When a message arrives over the network it runs a small piece
 of Python, sends an answer back, and goes back to waiting. It might do that a
 thousand times before you stop it.
 
-```
+```text
 start ──> load model into memory ──> ┌─> wait ──> answer ──┐
                                      └─────────────────────┘
                                           (forever)
@@ -240,7 +240,7 @@ This is the part most likely to feel surprising, so it is worth stating directly
 **The API does not train anything, and it does not contain a model.** MLflow is
 the handoff point between the two halves of the system.
 
-```
+```text
 make pipeline  ──writes──>  MLflow Model Registry  <──reads──  FastAPI
    (training)                 models:/<name>/1                (serving)
 ```
@@ -285,7 +285,7 @@ break — and this would stop being a reusable template.
 
 So the flow is inverted. The frontend *asks* what the fields are:
 
-```
+```text
 GET /api/predict/schema
   ↓
 { "features": [ {"name": "MEAN_RADIUS", "type": "double"}, ... ] }
@@ -293,7 +293,7 @@ GET /api/predict/schema
 
 ...and builds its form from that answer at runtime. The chain of custody is:
 
-```
+```text
 your CSV ──> training ──> model signature ──> /api/predict/schema ──> the form
 ```
 
@@ -435,10 +435,72 @@ frontend/src/
 │   ├── schema.d.ts       Generated TypeScript types. Do not hand-edit.
 │   ├── client.ts         fetch wrapper; turns failures into typed errors
 │   └── hooks.ts          One hook per endpoint (loading/error/caching)
-├── components/           Reusable pieces: FeatureForm, ArtifactGallery, States
+├── lib/
+│   └── format.ts         How numbers and dates become text — decided once
+├── components/           Reusable pieces (see below)
 ├── pages/                One per screen: Predict, Runs, RunDetail
 └── styles.css            Plain CSS; restyle by editing the variables at the top
 ```
+
+### The component vocabulary
+
+Pages compose these rather than writing markup, which is what keeps three
+separately-written screens feeling like one system:
+
+| Component | Use |
+| --- | --- |
+| `PageHeader` | Title, a secondary line, optional right-aligned actions |
+| `Section` | A titled block with a consistent empty state |
+| `DataTable` | Columns described as data, so they can be derived at runtime |
+| `KeyValueTable` | Two-column name/value, for parameters and tags |
+| `MetricGrid` | Metric tiles, formatted by magnitude |
+| `ProbabilityBars` | Per-class scores; absent for regressors |
+| `FeatureForm` | Inputs generated from the model signature |
+| `Loading` / `EmptyState` / `ErrorState` | The three states every fetch has |
+
+**To add a page:** create it in `pages/`, compose `PageHeader` and `Section`,
+fetch with a hook from `api/hooks.ts`, and render the three states. Add a route
+in `App.tsx`. No new CSS is normally needed.
+
+### Formatting is a data-type decision, not a styling one
+
+Supporting regression put two very different kinds of number in the same table.
+A **bounded score** — accuracy, R², f1 — sits in [0, 1]. An **error term** —
+RMSE, MAE — is in whatever units the target uses and might be 54.75 or
+128,456.79. One fixed precision cannot serve both:
+
+| Value | `toFixed(4)` | `formatMetric` |
+| --- | --- | --- |
+| `0.9561` | `0.9561` | `0.9561` |
+| `128456.7891` | `128456.7891` | `128,456.79` |
+| `0.00003` | **`0.0000`** ← information lost | `3.00e-5` |
+
+`lib/format.ts` chooses from the **magnitude of the value**, never the metric's
+name. Matching on names like "accuracy" would tie the UI to one project's
+vocabulary; a pipeline logging `test_mape` must display correctly with no
+frontend change, which is rule 2 of the previous section applied to numbers.
+
+The same module trims regression predictions. `String(152.13381958007812)`
+prints seventeen digits — the model's binary precision, presented as if it were
+confidence.
+
+### Theming
+
+`styles.css` is plain CSS with custom properties at the top. Change the values
+in `:root` to restyle the entire application; a `prefers-color-scheme` block
+below supplies the dark variants. There is no framework, no build step beyond
+Vite's, and no component needs editing to rebrand.
+
+```css
+:root {
+  --accent: #2b6cb0;    /* links, primary buttons, focus rings */
+  --surface: #ffffff;   /* cards, tables, form backgrounds */
+  --radius: 8px;
+}
+```
+
+Class names follow a loose `block__element--modifier` convention, so a selector
+says where it applies without searching the markup.
 
 ## 7c. Keeping the frontend adaptable across ML templates
 

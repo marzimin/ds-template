@@ -1,3 +1,5 @@
+.vite
 dist
-src/api/schema.d.ts
+node_modules
 src/api/openapi.json
+src/api/schema.d.ts
