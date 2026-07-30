@@ -98,6 +98,32 @@ it('handles a run with no metrics or parameters', async () => {
   );
   renderAt('bare');
 
-  expect(await screen.findByText('No metrics were logged for this run.')).toBeInTheDocument();
-  expect(screen.getByText('No parameters were logged.')).toBeInTheDocument();
+  // Every empty section renders the same card, rather than some sections using
+  // a card and others a bare paragraph.
+  expect(await screen.findByText('No metrics were logged')).toBeInTheDocument();
+  expect(screen.getByText('No parameters were logged')).toBeInTheDocument();
+  expect(screen.getByText('This run logged no files')).toBeInTheDocument();
+});
+
+it('formats metrics by magnitude, not at one fixed precision', async () => {
+  vi.stubGlobal(
+    'fetch',
+    mockFetch({
+      '/artifacts': { body: [] },
+      '/api/runs/mixed': {
+        body: {
+          ...RUN,
+          run_id: 'mixed',
+          // A bounded score, an error term in the target's units, and a value
+          // that a fixed four decimals would round away to zero.
+          metrics: { test_r2: 0.4342, test_rmse: 128456.7891, test_tiny: 0.00003 },
+        },
+      },
+    }),
+  );
+  renderAt('mixed');
+
+  expect(await screen.findByText('0.4342')).toBeInTheDocument();
+  expect(screen.getByText('128,456.79')).toBeInTheDocument();
+  expect(screen.getByText('3.00e-5')).toBeInTheDocument();
 });

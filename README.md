@@ -285,11 +285,58 @@ Both generated files (`openapi.json` and `schema.d.ts`) are committed so a fresh
 clone builds without a running backend. Re-run `make types` after changing any
 request or response shape.
 
+### Numbers adapt to what they are
+
+Supporting regression put two very different kinds of number in the same table.
+A **bounded score** — accuracy, R², f1 — sits in [0, 1]. An **error term** —
+RMSE, MAE — is in the units of your target and might be 54.75 or 128,456.79.
+
+`frontend/src/lib/format.ts` picks the presentation from the value's magnitude,
+so both read well without either knowing which metrics exist:
+
+| Value | Rendered |
+| --- | --- |
+| `0.9561` | `0.9561` |
+| `54.752601` | `54.75` |
+| `128456.7891` | `128,456.79` |
+| `0.00003` | `3.00e-5` — never silently `0.0000` |
+
+It never matches on metric *names*: a pipeline logging `test_mape` displays
+correctly with no frontend change. The same module trims regression predictions,
+which otherwise print their full float precision — seventeen digits presented as
+if they were confidence.
+
+### Components, so pages stay consistent
+
+Pages compose a small vocabulary rather than writing markup:
+
+| Component | Use |
+| --- | --- |
+| `PageHeader` | Title, secondary line, optional actions |
+| `Section` | A titled block with a consistent empty state |
+| `DataTable` | Columns described as data, so they can be derived at runtime |
+| `KeyValueTable` | Two-column name/value |
+| `MetricGrid` | Metric tiles, formatted by magnitude |
+| `ProbabilityBars` | Per-class scores; absent for regressors |
+| `Loading` / `EmptyState` / `ErrorState` | The three states every fetch has |
+
+**To add a page:** create it in `pages/`, compose `PageHeader` and `Section`,
+fetch with a hook from `api/hooks.ts`, render the three states, and add a route
+in `App.tsx`. No new CSS is normally needed.
+
 ### Restyling
 
 `frontend/src/styles.css` is plain CSS with custom properties at the top. Change
 the variables in `:root` to restyle the whole app; light and dark are both
 handled. There is no CSS framework to learn.
+
+```css
+:root {
+  --accent: #2b6cb0;    /* links, primary buttons, focus rings */
+  --surface: #ffffff;   /* cards, tables, form backgrounds */
+  --radius: 8px;
+}
+```
 
 ---
 

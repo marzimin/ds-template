@@ -396,6 +396,24 @@ a {
   text-align: right;
 }
 
+/* Sections: a titled block of a page, spaced consistently */
+.section {
+  margin-bottom: calc(var(--gap) * 1.75);
+}
+
+.section > h3 {
+  margin-bottom: 0.6rem;
+}
+
+.section > h3:first-child {
+  margin-top: 0;
+}
+
+/* Numeric cells use tabular figures so digits line up down a column. */
+.table__number {
+  font-variant-numeric: tabular-nums;
+}
+
 /* Metrics */
 .metric-grid {
   display: grid;

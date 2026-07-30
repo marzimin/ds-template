@@ -1,32 +1,32 @@
 /**
  * Training run history.
  *
- * Metric columns are derived from whatever the runs actually logged rather than
- * being a fixed list, so a pipeline that adds a metric shows it immediately and
- * one that renames a metric does not leave an empty column behind.
+ * Metric columns are derived from what the runs actually logged rather than
+ * declared here, so a pipeline that adds a metric shows it immediately and a
+ * regression pipeline logging RMSE needs no change. Values are formatted by
+ * magnitude, which is what lets a bounded score and an error term in the
+ * target's units share one table.
  */
 import { Link } from 'react-router';
 
+import { DataTable, type Column } from '../components/DataTable';
+import { PageHeader } from '../components/Section';
 import { EmptyState, ErrorState, Loading } from '../components/States';
+import { formatMetric, formatTimestamp, formatTimestampExact } from '../lib/format';
 import { useRuns } from '../api/hooks';
 import type { RunSummary } from '../api/client';
 
+/** Union of every metric key across the runs, test metrics first. */
 function metricColumns(runs: RunSummary[]): string[] {
   const keys = new Set<string>();
   for (const run of runs) {
     for (const key of Object.keys(run.metrics ?? {})) keys.add(key);
   }
-  // Test metrics first: they are what you compare runs on.
   return [...keys].sort((a, b) => {
     const aTest = a.startsWith('test_') ? 0 : 1;
     const bTest = b.startsWith('test_') ? 0 : 1;
     return aTest - bTest || a.localeCompare(b);
   });
-}
-
-function formatTime(epochMs: number | null | undefined): string {
-  if (!epochMs) return '—';
-  return new Date(epochMs).toLocaleString();
 }
 
 export function RunsPage() {
@@ -47,52 +47,40 @@ export function RunsPage() {
     );
   }
 
-  const columns = metricColumns(runs.data);
+  const columns: Column<RunSummary>[] = [
+    {
+      key: 'run',
+      header: 'Run',
+      rowHeader: true,
+      render: (run) => (
+        <Link to={`/runs/${run.run_id}`}>{run.run_name ?? run.run_id.slice(0, 8)}</Link>
+      ),
+    },
+    { key: 'status', header: 'Status', render: (run) => run.status ?? '—' },
+    {
+      key: 'started',
+      header: 'Started',
+      render: (run) => (
+        <time title={formatTimestampExact(run.start_time)}>
+          {formatTimestamp(run.start_time)}
+        </time>
+      ),
+    },
+    ...metricColumns(runs.data).map((key): Column<RunSummary> => ({
+      key,
+      header: key,
+      numeric: true,
+      render: (run) => {
+        const value = run.metrics?.[key];
+        return value == null ? '—' : formatMetric(value);
+      },
+    })),
+  ];
 
   return (
-    <section>
-      <header className="page-header">
-        <h2>Runs</h2>
-        <p className="page-header__meta">{runs.data.length} run(s), newest first</p>
-      </header>
-
-      <div className="table-scroll">
-        <table className="table">
-          <thead>
-            <tr>
-              <th scope="col">Run</th>
-              <th scope="col">Status</th>
-              <th scope="col">Started</th>
-              {columns.map((key) => (
-                <th scope="col" key={key}>
-                  {key}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {runs.data.map((run) => (
-              <tr key={run.run_id}>
-                <th scope="row">
-                  <Link to={`/runs/${run.run_id}`}>
-                    {run.run_name ?? run.run_id.slice(0, 8)}
-                  </Link>
-                </th>
-                <td>{run.status ?? '—'}</td>
-                <td>{formatTime(run.start_time)}</td>
-                {columns.map((key) => {
-                  const value = run.metrics?.[key];
-                  return (
-                    <td key={key} className="table__number">
-                      {value == null ? '—' : value.toFixed(4)}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <>
+      <PageHeader title="Runs" meta={`${runs.data.length} run(s), newest first`} />
+      <DataTable columns={columns} rows={runs.data} rowKey={(run) => run.run_id} />
+    </>
   );
 }

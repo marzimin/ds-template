@@ -2,7 +2,10 @@
  * Live inference: discover the contract, fill it in, get a prediction back.
  */
 import { FeatureForm } from '../components/FeatureForm';
+import { ProbabilityBars } from '../components/MetricGrid';
+import { PageHeader } from '../components/Section';
 import { ErrorState, Loading } from '../components/States';
+import { formatPrediction } from '../lib/format';
 import { usePredict, usePredictSchema } from '../api/hooks';
 
 export function PredictPage() {
@@ -13,14 +16,16 @@ export function PredictPage() {
   if (schema.isError) return <ErrorState error={schema.error} />;
 
   return (
-    <section>
-      <header className="page-header">
-        <h2>Predict</h2>
-        <p className="page-header__meta">
-          Model <strong>{schema.data.model_name}</strong> version{' '}
-          <strong>{schema.data.model_version}</strong>
-        </p>
-      </header>
+    <>
+      <PageHeader
+        title="Predict"
+        meta={
+          <>
+            Model <strong>{schema.data.model_name}</strong> version{' '}
+            <strong>{schema.data.model_version}</strong>
+          </>
+        }
+      />
 
       <p className="prose">
         These fields come from the signature logged when the model was trained, not from
@@ -42,31 +47,13 @@ export function PredictPage() {
       {prediction.isSuccess && (
         <div className="result" role="status">
           <h3>Prediction</h3>
-          <p className="result__value">{String(prediction.data.prediction)}</p>
+          <p className="result__value" title={String(prediction.data.prediction)}>
+            {formatPrediction(prediction.data.prediction)}
+          </p>
 
+          {/* Absent for regressors, which have no classes to score. */}
           {prediction.data.probabilities && (
-            <table className="table">
-              <caption>Class probabilities</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Class</th>
-                  <th scope="col">Probability</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(prediction.data.probabilities).map(([label, score]) => (
-                  <tr key={label}>
-                    <th scope="row">{label}</th>
-                    <td>
-                      <div className="bar">
-                        <div className="bar__fill" style={{ width: `${score * 100}%` }} />
-                        <span className="bar__label">{(score * 100).toFixed(1)}%</span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <ProbabilityBars probabilities={prediction.data.probabilities} />
           )}
 
           <p className="result__meta">
@@ -74,6 +61,6 @@ export function PredictPage() {
           </p>
         </div>
       )}
-    </section>
+    </>
   );
 }
