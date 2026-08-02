@@ -24,8 +24,8 @@ wired into ``setup.sh`` and the ``Dockerfile``.
 """
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import pandas as pd
 from sklearn.datasets import load_breast_cancer, load_diabetes, load_iris

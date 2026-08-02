@@ -11,8 +11,9 @@ which is what lets a frontend build its input form at runtime.
 
 import logging
 import threading
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any
 
 import mlflow
 import pandas as pd
@@ -183,7 +184,11 @@ class LoadedModel:
             if classes is not None
             else [str(i) for i in range(len(row))]
         )
-        return {label: float(score) for label, score in zip(labels, row)}
+        # strict=True: labels and scores are built to be the same length, so a
+        # mismatch means the estimator's classes_ disagrees with the width of
+        # its own predict_proba output. Silently dropping the tail would hand
+        # back probabilities attributed to the wrong class.
+        return {label: float(score) for label, score in zip(labels, row, strict=True)}
 
 
 def _concise_schema_error(exc: MlflowException) -> str:

@@ -4,7 +4,7 @@ import importlib
 import logging
 import os
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 import mlflow
 import pandas as pd
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 class TrainModelPipeline(Pipeline):
     """End-to-end training pipeline."""
 
-    def __init__(self, run_name: Optional[str] = None) -> None:
+    def __init__(self, run_name: str | None = None) -> None:
         """Initialise configuration and placeholders.
 
         Args:
@@ -64,7 +64,7 @@ class TrainModelPipeline(Pipeline):
         self.model_name = str(configured_name).lower()
         self.model_params = self._select_model_params()
         self.run_name = run_name or "Default_Run_Name"
-        self.model: Optional[BaseEstimator] = None
+        self.model: BaseEstimator | None = None
         # Resolved from the target in _validate_training_data. Defaults to
         # binary so the attribute is always a valid TaskType.
         self.task: TaskType = TaskType.BINARY
@@ -394,7 +394,7 @@ class TrainModelPipeline(Pipeline):
         path.write_text(report, encoding="utf-8")
         return path
 
-    def _positive_class_scores(self, features: pd.DataFrame) -> Optional[pd.Series]:
+    def _positive_class_scores(self, features: pd.DataFrame) -> pd.Series | None:
         """Return positive-class scores, or None if the model exposes none.
 
         Prefers ``predict_proba`` and falls back to ``decision_function``. Both

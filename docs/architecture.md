@@ -14,6 +14,7 @@ guide:
 | [`ml.md`](ml.md) | Task types, model configuration, schemas, metrics |
 | [`backend.md`](backend.md) | The API: endpoints, contracts, layering |
 | [`frontend.md`](frontend.md) | React, components, formatting, theming |
+| [`handoff.md`](handoff.md) | Where the data comes from when a warehouse feeds this project |
 
 The repository is **one codebase with two front doors**: the terminal, which is
 how you have always run this project, and the browser, which is how a

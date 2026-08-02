@@ -3,8 +3,12 @@ name: Build Container
 on:
   push:
     branches: ["main"]
+    # Documentation changes cannot change the image, so they should not bump a
+    # tag or spend a build on one.
     paths-ignore:
       - '.github/**'
+      - 'docs/**'
+      - '**.md'
 
 permissions:
   contents: write

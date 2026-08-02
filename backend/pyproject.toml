@@ -21,12 +21,19 @@ dependencies = [
     "uvicorn[standard]>=0.44.0",
 ]
 
-[project.optional-dependencies]
+# ── Optional dependency groups ─────────────────────────────────────────────
+# PEP 735 groups, matching de-template so the two projects are installed the
+# same way. `uv sync` includes `dev` by default; `uv sync --no-dev` excludes it,
+# which is what the Dockerfile relies on to keep pytest and jupyterlab out of
+# the runtime image. As `[project.optional-dependencies]` these were extras, and
+# `--no-dev` had nothing to act on.
+[dependency-groups]
 dev = [
     "pre-commit>=3.0",
     "pytest>=9.0",
+    "pytest-cov>=5.0.0",
     "mypy>=1.10",
-    "ruff>=0.5",
+    "ruff>=0.15.0",
     "types-PyYAML>=6.0",
     "ipykernel>=6.0",
     "jupyterlab>=4.5.10",
@@ -46,15 +53,22 @@ packages = ["src"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra -q"
+addopts = "-ra -q --cov=src --cov-report=term-missing"
 testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 88
+target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "D"]
+# E/F/I/D was this project's baseline; UP and B come from de-template, so code
+# reads the same way in both repositories.
+select = ["E", "F", "I", "UP", "B", "D"]
 ignore = ["E203", "E266", "E501", "D100", "D104"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests document themselves through their names.
+"tests/**" = ["D103"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -68,6 +82,13 @@ python_version = "3.12"
 strict = true
 disallow_untyped_defs = true
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Tests lean on unittest.mock and monkeypatching; strict typing there costs more
+# than it catches. The pre-commit hook already excludes them — this is for
+# anyone running mypy directly.
+module = "tests.*"
+ignore_errors = true
 
 [tool.bandit]
 exclude_dirs = ["tests"]

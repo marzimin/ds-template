@@ -1,0 +1,159 @@
+# The whole application in one command: `make up`.
+#
+# Without this file the README asks you to open three terminals and keep them
+# open — one for the tracking server, one for the API, one for the dev server.
+# That is fine when you are working on the code; it is a poor first five minutes
+# for someone who just wants to see the thing run.
+#
+#   make up        start everything in the background
+#   make down      stop it (runs, models and artifacts are preserved)
+#   make logs      follow all three
+#   make reset     stop it and DELETE the MLflow volume, then start fresh
+#
+# The backend image is shared by three services — the tracking server, the API,
+# and the training pipeline — because all three are the same Python project with
+# different entry points. Only the command differs.
+
+x-backend: &backend
+  build:
+    # Context is the repository root so the Dockerfile can COPY cfg/ alongside
+    # backend/. Both are needed: cfg/config.yaml is what the pipeline reads.
+    context: .
+    dockerfile: backend/Dockerfile
+  # Named rather than left to compose's <project>-<service> default, so all
+  # three services share one build instead of producing three identical images,
+  # and so `docker run ds-template-backend ...` works after `make build`.
+  image: ds-template-backend:latest
+  env_file:
+    # required: false so `docker compose up` works on a fresh clone, before
+    # anyone has run `make setup` to create .env. Every value it would supply
+    # already has a default here or in the code.
+    - path: .env
+      required: false
+  environment: &backend-env
+    # Overrides .env, which points at 127.0.0.1 for the three-terminal workflow.
+    # Inside the network, `mlflow` is the service hostname.
+    MLFLOW_TRACKING_URI: http://mlflow:5000
+    # Pin the root explicitly rather than inferring it from the package's depth
+    # on disk. The image already sets this; repeated here so that reading the
+    # compose file tells you where cfg/, data/ and outputs/ resolve to.
+    DS_PROJECT_ROOT: /opt/app
+
+services:
+
+  # Stores runs, metrics, artifacts and the Model Registry.
+  #
+  # The stores are named explicitly rather than left to the working directory
+  # the way `make mlflow` does, for two reasons. The working directory has to
+  # stay on the uv project or `uv run` finds no pyproject.toml and no mlflow to
+  # run. And MLflow 3 refuses an explicit `file:` backend store outright — "in
+  # maintenance mode", it says, pointing at sqlite — which is also what the
+  # Model Registry needs: registration silently degrades to a plain artifact log
+  # without a database behind it. See log_model() in src/ml/tracking.py.
+  mlflow:
+    <<: *backend
+    environment:
+      <<: *backend-env
+      # MLflow 3 rejects any request whose Host header is not localhost, as
+      # protection against DNS rebinding. Inside a compose network every client
+      # addresses it as `mlflow:5000`, so without this the server answers 403
+      # "Invalid Host header" to the API and the pipeline alike — and the
+      # template reports that as "tracking server is not reachable", which sends
+      # you looking in entirely the wrong place.
+      MLFLOW_SERVER_ALLOWED_HOSTS: "mlflow:5000,localhost:5000,127.0.0.1:5000"
+    command: >
+      uv run mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/mlartifacts
+    ports:
+      # 5000 is taken by the AirPlay Receiver on many Macs. Set MLFLOW_PORT in
+      # .env to publish somewhere else; the container port never changes, so
+      # nothing else in this file has to follow.
+      - "${MLFLOW_PORT:-5000}:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  # Loads the registered model and answers requests. Interactive docs at /docs.
+  api:
+    <<: *backend
+    command: uv run uvicorn src.api.app:app --host 0.0.0.0 --port 8000
+    environment:
+      <<: *backend-env
+      # The browser reaches the app through the dev server's origin, not the
+      # API's, so that is the origin the API has to allow.
+      CORS_ALLOW_ORIGINS: http://localhost:${WEB_PORT:-5173},http://127.0.0.1:${WEB_PORT:-5173}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      # Bind-mounted rather than baked in, so editing cfg/config.yaml takes
+      # effect on the next request instead of on the next rebuild.
+      - ./cfg:/opt/app/cfg
+      # The tracking server records artifact locations as paths in its own
+      # filesystem. Mounting the same volume at the same path means the API
+      # resolves them whether MLflow proxies the download or not.
+      - mlflow_data:/mlflow
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Serves the page you open in a browser. Runs the Vite dev server rather than
+  # a production bundle: this file is for developing against, and `make bundle`
+  # is what produces something to deploy.
+  web:
+    image: node:22-slim
+    working_dir: /app
+    # `npm ci` on every start rather than a Dockerfile: the frontend has no
+    # image of its own, and this keeps node_modules in step with package.json
+    # without one. It is a no-op once the volume is warm.
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 5173"
+    environment:
+      # What the dev server proxies /api, /docs and /openapi.json to.
+      VITE_API_TARGET: http://api:8000
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+    volumes:
+      - ./frontend:/app
+      # An anonymous volume shadowing the host's node_modules. Without it the
+      # container would inherit the macOS binaries of esbuild and friends, which
+      # are the wrong platform and fail at startup.
+      - web_node_modules:/app/node_modules
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # Not started by `make up` — a batch job, not a service. Run it on demand:
+  #   docker compose run --rm pipeline
+  # data/ and outputs/ are bind-mounted so the CSVs and plots it writes land in
+  # your working tree, where the rest of the template expects to find them.
+  #
+  # Bind-mounting data/ hides the demo CSVs the image baked in, and git ignores
+  # everything under data/, so on a fresh clone that directory is empty. Hence
+  # the guard: generate the demo datasets when there is no CSV at all, and never
+  # otherwise, so your own data is not overwritten.
+  pipeline:
+    <<: *backend
+    profiles: ["tools"]
+    command: >
+      sh -c "ls /opt/app/data/raw/*.csv >/dev/null 2>&1
+      || uv run python scripts/generate_sample_data.py;
+      uv run pipeline"
+    volumes:
+      - ./cfg:/opt/app/cfg
+      - ./data:/opt/app/data
+      - ./outputs:/opt/app/outputs
+      - mlflow_data:/mlflow
+    depends_on:
+      mlflow:
+        condition: service_healthy
+
+volumes:
+  mlflow_data:
+  web_node_modules:

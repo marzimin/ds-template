@@ -142,6 +142,12 @@ Column names are normalised on read — uppercased, non-alphanumerics replaced
 with underscores — so `mean radius` becomes `MEAN_RADIUS`. `target_column` is
 matched *after* normalisation.
 
+> This bites hardest with a file exported from a warehouse, where the header is
+> conventionally `lower_snake`: you must write `target_column: "ITEM_NAME_LENGTH"`
+> even though the CSV says `item_name_length`. Getting it wrong produces a
+> "target column not found" error naming a column you can plainly see in the
+> file. See [`handoff.md`](handoff.md) if the file came from de-template.
+
 The pipeline enforces two things it will not do for you:
 
 - **Numeric features only.** Encode or drop categoricals in `PrepareDataPipeline`.

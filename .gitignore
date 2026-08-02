@@ -20,7 +20,6 @@ __pycache__/
 venv/
 env/
 env.bak/
-.python-version
 
 # --- Claude ---
 .claude/
@@ -58,12 +57,14 @@ test-output.xml
 
 # --- Tools / IDEs ---
 .idea/
-# Ignore .vscode contents but keep settings.json tracked: it points editors at
-# backend/.venv, which is not guessable from the repository root. This must use
-# .vscode/* rather than .vscode/ — git does not descend into an excluded
+# Ignore .vscode contents but keep settings.json and extensions.json tracked:
+# the first points editors at backend/.venv, which is not guessable from the
+# repository root, and the second is the recommended-extensions list. This must
+# use .vscode/* rather than .vscode/ — git does not descend into an excluded
 # directory, so a negation inside one never applies.
 .vscode/*
 !.vscode/settings.json
+!.vscode/extensions.json
 *~
 *.swp
 *.swo
@@ -111,10 +112,21 @@ backend/notebooks/**
 # directories — frontend/src/models/, frontend/src/pages/runs/, and
 # frontend/src/lib/artifacts/ would all vanish without a warning.
 /artifacts/
-/outputs/
 /models/
 /checkpoints/
 /runs/
+
+# outputs/ keeps its structure via .gitkeep, like data/ above: docker-compose
+# bind-mounts these directories, and Docker creates a missing bind-mount source
+# itself — root-owned on Linux, which the container user then cannot write to.
+# /outputs/* rather than /outputs/ so the negations below are reachable; git
+# does not descend into an excluded directory.
+/outputs/*
+!/outputs/eda/
+!/outputs/plots/
+!/outputs/reports/
+/outputs/*/*
+!/outputs/*/.gitkeep
 
 # --- Model files (binary, large) ---
 *.ckpt

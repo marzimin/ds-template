@@ -10,8 +10,9 @@ is the caller's job, which is what lets both pipelines collect their artifacts
 and log them to MLflow in one place.
 """
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker

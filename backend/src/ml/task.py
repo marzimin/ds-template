@@ -11,7 +11,7 @@ what it concluded: a silent wrong guess is far worse than a noisy right one.
 """
 
 import logging
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 import pandas as pd
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 MAX_CLASSES_FOR_INFERENCE = 20
 
 
-class TaskType(str, Enum):
+class TaskType(StrEnum):
     """The kind of prediction problem, which decides metrics and plots."""
 
     BINARY = "binary_classification"

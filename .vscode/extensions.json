@@ -1,0 +1,17 @@
+{
+  // Suggested when the workspace is opened. The Python half mirrors
+  // de-template's list; the rest covers the TypeScript frontend, which that
+  // project does not have.
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "charliermarsh.ruff",
+    "ms-toolsai.jupyter",
+    "ms-azuretools.vscode-docker",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "tamasfe.even-better-toml",
+    "eamodio.gitlens",
+    "anthropics.claude-code"
+  ]
+}

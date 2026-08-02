@@ -69,7 +69,7 @@ def read_config() -> dict[str, Any]:
         dict[str, Any]: Configuration settings loaded from ``cfg/config.yaml``.
     """
     config_file_path = resolve_project_path(Path("cfg") / "config.yaml")
-    with open(config_file_path, "r", encoding="utf-8") as file:
+    with open(config_file_path, encoding="utf-8") as file:
         config_data = yaml.safe_load(file)
     return cast(dict[str, Any], config_data)
 

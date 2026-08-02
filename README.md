@@ -22,10 +22,10 @@ You only edit the first two to use it with your own data.
 ## Quick start
 
 **Prerequisites:** [uv](https://docs.astral.sh/uv/) (`brew install uv`) and
-Node.js 22+.
+Node.js 22+. Or just Docker — see [Running it in containers](#running-it-in-containers).
 
 ```bash
-PYTHON_VERSION=3.12 make setup
+make setup
 ```
 
 That creates the Python environment, installs both halves, sets up git hooks,
@@ -107,6 +107,47 @@ backend without the frontend.
 
 ---
 
+## Running it in containers
+
+All three processes at once, with nothing installed but Docker:
+
+```bash
+make up          # start everything in the background
+make logs        # follow all three
+make down        # stop (runs, models and artifacts are preserved)
+```
+
+Same three addresses: **<http://localhost:5173>**, `:8000/docs`, `:5000`.
+
+Training runs as a batch job rather than a service, so it is not started by
+`make up`:
+
+```bash
+make docker-pipeline
+```
+
+`cfg/`, `data/` and `outputs/` are bind-mounted, so edits take effect without a
+rebuild and the plots and CSVs land in your working tree. MLflow's runs and
+artifacts live in a named volume — `make down` keeps them, `make reset` deletes
+them and starts fresh.
+
+> Port 5000 is often taken by the AirPlay Receiver on macOS. Set `MLFLOW_PORT`
+> in `.env` — or `make up MLFLOW_PORT=5001` — and nothing else has to change.
+
+The image also runs standalone. It defaults to the pipeline; override the
+command to serve instead:
+
+```bash
+make build                                            # rebuild it
+docker run --rm -p 8000:8000 ds-template-backend \
+    uv run uvicorn src.api.app:app --host 0.0.0.0 --port 8000
+```
+
+CI publishes the same image to `ghcr.io/marzimin/ds-template` on every push to
+`main`, tagged with the version it bumped.
+
+---
+
 ## Using your own data
 
 Two steps, no Python:
@@ -137,11 +178,18 @@ make pipeline   # prepare → EDA → train
 make mlflow     # tracking server        (terminal 1)
 make api        # API server             (terminal 2)
 make web        # web interface          (terminal 3)
+make up         # …or all three in containers
+make down       # stop them
 make test       # both test suites
 make lint       # format and lint everything
+make check      # lint and test — everything CI runs
 make types      # regenerate frontend types after changing the API
+make bundle     # production frontend bundle
 make help       # every target
 ```
+
+Target names match [de-template](https://github.com/marzimin/de-template) where
+the two overlap, so moving between them does not mean relearning the verbs.
 
 ---
 
@@ -153,6 +201,7 @@ make help       # every target
 | [`docs/ml.md`](docs/ml.md) | You are changing the data, the model, or the metrics. |
 | [`docs/backend.md`](docs/backend.md) | You are changing the API. |
 | [`docs/frontend.md`](docs/frontend.md) | You are changing the web interface. |
+| [`docs/handoff.md`](docs/handoff.md) | Your data arrives from a warehouse run by [de-template](https://github.com/marzimin/de-template), rather than from a CSV you put there yourself. |
 
 ---
 
@@ -167,6 +216,8 @@ make help       # every target
 | Frontend fails to compile after an API change | Types are stale | `make types` |
 | Commit fails with `pre-commit not found` | Hook points at a deleted virtualenv | `make hooks` |
 | Metrics look wrong for your problem | Task inferred incorrectly | Check the "Task inferred as…" log line; set `task:` in `cfg/config.yaml` |
+| "Target column not found", naming a column you can see in the CSV | Column names are normalised to upper case on read | Write `target_column` in `UPPER_SNAKE`; see [`docs/handoff.md`](docs/handoff.md) |
+| `make up` fails to bind port 5000 | AirPlay Receiver | `make up MLFLOW_PORT=5001`, or set it in `.env` |
 
 ---
 

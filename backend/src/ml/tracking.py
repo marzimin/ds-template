@@ -16,9 +16,9 @@ features a prediction request needs.
 import importlib
 import logging
 import os
-from contextlib import nullcontext
+from contextlib import AbstractContextManager, nullcontext
 from types import ModuleType
-from typing import Any, ContextManager
+from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -56,7 +56,8 @@ def setup_mlflow() -> str:
         The active MLflow tracking URI.
 
     Raises:
-        RuntimeError: If the configured MLflow server cannot be reached.
+        RuntimeError: If the configured MLflow server cannot be reached, or if
+            it is reachable but rejects the first API call.
     """
     tracking_uri = os.getenv("MLFLOW_TRACKING_URI", DEFAULT_MLFLOW_TRACKING_URI)
     if mlflow.get_tracking_uri() != tracking_uri:
@@ -70,12 +71,8 @@ def setup_mlflow() -> str:
     request = Request(health_url, method="GET")
     try:
         with urlopen(request, timeout=3):
-            # Only meaningful before a run starts; set_experiment does not move
-            # an already-active run, so skip it when one is in flight.
-            if mlflow.active_run() is None:
-                mlflow.set_experiment(experiment_name(read_config()))
-            return tracking_uri
-    except (HTTPError, URLError, TimeoutError, OSError, MlflowException) as exc:
+            pass
+    except (HTTPError, URLError, TimeoutError, OSError) as exc:
         raise RuntimeError(
             "MLflow tracking server is required but is not reachable at "
             f"{tracking_uri!r}. Start it with `mlflow server --host 127.0.0.1 "
@@ -84,8 +81,27 @@ def setup_mlflow() -> str:
             "metrics, models, and artifacts are captured consistently."
         ) from exc
 
+    # Deliberately outside the reachability check above. A server that answers
+    # /health can still reject the API call — MLflow 3 returns 403 "Invalid Host
+    # header" for any host it was not told to allow, which is what happens the
+    # first time it is addressed by a container name. Reporting that as "not
+    # reachable" sends you looking at networking instead of at the response.
+    try:
+        # Only meaningful before a run starts; set_experiment does not move an
+        # already-active run, so skip it when one is in flight.
+        if mlflow.active_run() is None:
+            mlflow.set_experiment(experiment_name(read_config()))
+    except MlflowException as exc:
+        raise RuntimeError(
+            f"MLflow answered at {tracking_uri!r} but rejected the request: "
+            f"{exc}. The server is running — check what it returned rather than "
+            "whether it is up."
+        ) from exc
 
-def active_or_new_run(run_name: str) -> ContextManager[Any]:
+    return tracking_uri
+
+
+def active_or_new_run(run_name: str) -> AbstractContextManager[Any]:
     """Return a context manager that reuses the active run, or starts one.
 
     Pipeline steps are normally called inside a run the CLI already opened, but

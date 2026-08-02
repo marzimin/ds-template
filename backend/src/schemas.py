@@ -41,7 +41,14 @@ FEATURE_COLUMNS: dict[str, Column] = {}
 
 
 def normalise_column_name(column_name: str) -> str:
-    """Normalise a single column name the same way CSV reads do."""
+    """Normalise a single column name the same way CSV reads do.
+
+    This rule is a cross-repository contract, not an internal detail.
+    de-template reproduces it in ``scripts/demo_handoff.py`` to predict what
+    this project will call each exported column, and cannot import it — the two
+    are separate repositories. Changing the rule here silently invalidates the
+    names asserted there. See ``docs/handoff.md``.
+    """
     return re.sub(r"[^A-Z0-9]+", "_", column_name.upper()).strip("_")
 
 
