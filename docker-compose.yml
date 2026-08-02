@@ -60,7 +60,12 @@ services:
       # "Invalid Host header" to the API and the pipeline alike — and the
       # template reports that as "tracking server is not reachable", which sends
       # you looking in entirely the wrong place.
-      MLFLOW_SERVER_ALLOWED_HOSTS: "mlflow:5000,localhost:5000,127.0.0.1:5000"
+      #
+      # The published port has to be listed too, and it is the one that is easy
+      # to miss: your browser sends `localhost:${MLFLOW_PORT}`, not :5000. Note
+      # that /health is exempt from this check, so a health probe cannot catch a
+      # missing entry here — only opening the UI can.
+      MLFLOW_SERVER_ALLOWED_HOSTS: "mlflow:5000,localhost:5000,127.0.0.1:5000,localhost:${MLFLOW_PORT:-5000},127.0.0.1:${MLFLOW_PORT:-5000}"
     command: >
       uv run mlflow server --host 0.0.0.0 --port 5000
       --backend-store-uri sqlite:////mlflow/mlflow.db

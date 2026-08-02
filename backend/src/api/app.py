@@ -20,6 +20,7 @@ from src.api.contracts import ErrorResponse
 from src.api.routers import health, predict, runs
 from src.config import project_name, read_config
 from src.ml.inference import ModelNotAvailableError, get_cached_model
+from src.ml.tracking import configure_tracking_uri
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,12 +41,18 @@ def allowed_origins() -> list[str]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Warm the model cache at startup without requiring a model to exist.
+    """Point MLflow at the tracking server, then warm the model cache.
 
     Loading eagerly means the first real request is fast. Tolerating failure
     means a fresh checkout still starts: prediction routes answer 503 with
     instructions, and every other route works normally.
+
+    The tracking URI has to be set here rather than left to MLflow's default,
+    which resolves against the working directory instead of the server the
+    pipeline wrote to. Reporting a URI without applying it is worse than not
+    reporting one — see :func:`src.ml.tracking.configure_tracking_uri`.
     """
+    logger.info("MLflow tracking URI: %s", configure_tracking_uri())
     try:
         model = get_cached_model(read_config())
         logger.info("Loaded model %s version %s", model.name, model.version)

@@ -45,6 +45,30 @@ _FLAVOR_BY_ROOT_MODULE = {
 _DEFAULT_FLAVOR = "mlflow.sklearn"
 
 
+def configure_tracking_uri() -> str:
+    """Point MLflow at the configured tracking server and return that URI.
+
+    Every entry point must call this before touching MLflow. Left unset, MLflow
+    falls back to a store beside the current working directory, which is not the
+    server the pipeline wrote to — and the failure is quiet rather than loud:
+    the API finds the registered model but its artifacts are recorded as
+    ``mlflow-artifacts:`` URIs that only the tracking server can resolve, so
+    loading fails and every prediction answers 503 after a training run that
+    reported success.
+
+    Separate from :func:`setup_mlflow` because the API must not require a
+    reachable server to start: it degrades to "no model yet" instead.
+
+    Returns:
+        The tracking URI now in effect.
+    """
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", DEFAULT_MLFLOW_TRACKING_URI)
+    if mlflow.get_tracking_uri() != tracking_uri:
+        mlflow.set_tracking_uri(tracking_uri)
+        logger.info("MLflow tracking URI set to: %s", tracking_uri)
+    return tracking_uri
+
+
 def setup_mlflow() -> str:
     """Configure and verify the MLflow tracking server.
 
@@ -59,10 +83,7 @@ def setup_mlflow() -> str:
         RuntimeError: If the configured MLflow server cannot be reached, or if
             it is reachable but rejects the first API call.
     """
-    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", DEFAULT_MLFLOW_TRACKING_URI)
-    if mlflow.get_tracking_uri() != tracking_uri:
-        mlflow.set_tracking_uri(tracking_uri)
-        logger.info("MLflow tracking URI set to: %s", tracking_uri)
+    tracking_uri = configure_tracking_uri()
 
     if not tracking_uri.startswith(("http://", "https://")):
         return tracking_uri

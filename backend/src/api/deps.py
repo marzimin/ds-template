@@ -6,15 +6,14 @@ what to do when nothing has been trained yet.
 """
 
 import logging
-import os
 from typing import Annotated, Any
 
+import mlflow
 from fastapi import Depends, HTTPException, status
 from mlflow.tracking import MlflowClient
 
 from src.config import read_config
 from src.ml.inference import LoadedModel, ModelNotAvailableError, get_cached_model
-from src.ml.tracking import DEFAULT_MLFLOW_TRACKING_URI
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +24,15 @@ def get_config() -> dict[str, Any]:
 
 
 def tracking_uri() -> str:
-    """Return the MLflow tracking URI the API reads from."""
-    return os.getenv("MLFLOW_TRACKING_URI", DEFAULT_MLFLOW_TRACKING_URI)
+    """Return the MLflow tracking URI the API is actually reading from.
+
+    Asks MLflow rather than re-deriving it from the environment. The two used to
+    be computed independently, so health could report the configured server
+    while the client read a different store entirely — the report agreed with
+    the documentation and disagreed with reality, which is the least useful
+    combination. Startup calls ``configure_tracking_uri``; this reflects it.
+    """
+    return str(mlflow.get_tracking_uri())
 
 
 ConfigDep = Annotated[dict[str, Any], Depends(get_config)]

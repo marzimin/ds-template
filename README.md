@@ -109,21 +109,22 @@ backend without the frontend.
 
 ## Running it in containers
 
-All three processes at once, with nothing installed but Docker:
+Everything at once, with nothing installed but Docker:
 
 ```bash
-make up          # start everything in the background
-make logs        # follow all three
-make down        # stop (runs, models and artifacts are preserved)
+make demo        # start the services AND train a model
 ```
 
-Same three addresses: **<http://localhost:5173>**, `:8000/docs`, `:5000`.
+That is the one to run first. It leaves you with a working app at
+**<http://localhost:5173>**, `:8000/docs` and `:5000`.
 
-Training runs as a batch job rather than a service, so it is not started by
-`make up`:
+The pieces separately, once you know your way around:
 
 ```bash
-make docker-pipeline
+make up               # services only — no model until you train one
+make docker-pipeline  # train, as a batch job rather than a service
+make logs             # follow all three
+make down             # stop (runs, models and artifacts are preserved)
 ```
 
 `cfg/`, `data/` and `outputs/` are bind-mounted, so edits take effect without a
@@ -131,8 +132,13 @@ rebuild and the plots and CSVs land in your working tree. MLflow's runs and
 artifacts live in a named volume — `make down` keeps them, `make reset` deletes
 them and starts fresh.
 
+> **Docker and local runs keep separate MLflow stores.** Containers use the
+> `mlflow_data` volume; `make mlflow` uses `backend/mlflow.db` beside the code.
+> A model trained in one is invisible to the other, so train in whichever mode
+> you are running. Pick one for a given session rather than mixing them.
+>
 > Port 5000 is often taken by the AirPlay Receiver on macOS. Set `MLFLOW_PORT`
-> in `.env` — or `make up MLFLOW_PORT=5001` — and nothing else has to change.
+> in `.env`, or `make demo MLFLOW_PORT=5001`.
 
 The image also runs standalone. It defaults to the pipeline; override the
 command to serve instead:
@@ -150,7 +156,7 @@ CI publishes the same image to `ghcr.io/marzimin/ds-template` on every push to
 
 ## Using your own data
 
-Two steps, no Python:
+Two steps to point it at your file:
 
 1. Put a CSV in `data/raw/`.
 2. In `cfg/config.yaml`, set `data.input_file`, `target_column`, and either
@@ -161,10 +167,14 @@ Two steps, no Python:
 Then `make pipeline`. Column names are normalised on read, so `mean radius`,
 `Mean Radius`, and `MEAN_RADIUS` all become `MEAN_RADIUS`.
 
-The pipeline expects **numeric features with no missing values** by training
-time. Both raise a clear error naming the offending columns — encoding and
-imputation are modelling decisions, so the template does not guess for you. Add
-your transformations to `PrepareDataPipeline`.
+**If your data is already numeric and complete, that is the whole job.** If it
+is not, expect to write some Python. The pipeline requires **numeric features
+with no missing values** by training time and stops with an error naming the
+offending columns, because encoding and imputation change what a model learns
+and the template will not guess for you. That work goes in
+`PrepareDataPipeline` (`backend/src/ml/prepare_data.py`), which ships as four
+empty steps for you to fill in — real-world data usually needs at least one of
+them.
 
 See [`docs/ml.md`](docs/ml.md) for task types, model configuration, and schemas.
 
@@ -178,7 +188,7 @@ make pipeline   # prepare → EDA → train
 make mlflow     # tracking server        (terminal 1)
 make api        # API server             (terminal 2)
 make web        # web interface          (terminal 3)
-make up         # …or all three in containers
+make demo       # …or all three in containers, with a model trained
 make down       # stop them
 make test       # both test suites
 make lint       # format and lint everything
