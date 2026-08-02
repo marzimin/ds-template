@@ -30,7 +30,29 @@ from src.config import project_name, read_config
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MLFLOW_TRACKING_URI = "http://127.0.0.1:5000"
+
+def mlflow_port() -> str:
+    """Return the local MLflow port, honouring MLFLOW_PORT.
+
+    The single source for the port native tooling assumes MLflow is on. Both
+    `make mlflow` and docker compose already read MLFLOW_PORT — the former
+    binds a native server to it, the latter publishes the container's server
+    on it — so a native pipeline or API process that has not been told a
+    different MLFLOW_TRACKING_URI should look in the same place, rather than
+    at a hardcoded 5000 that stops matching the moment MLFLOW_PORT moves (5000
+    is often taken by the AirPlay Receiver on macOS).
+    """
+    return os.getenv("MLFLOW_PORT", "5000")
+
+
+def _default_tracking_uri() -> str:
+    """Return the local tracking URI implied by MLFLOW_PORT.
+
+    Read at call time rather than cached at import time, so a value set after
+    this module is imported still takes effect.
+    """
+    return f"http://127.0.0.1:{mlflow_port()}"
+
 
 #: Root module of a ``model_registry`` import path → MLflow flavor module.
 #: Anything unlisted falls back to ``mlflow.sklearn``, which covers every
@@ -59,10 +81,16 @@ def configure_tracking_uri() -> str:
     Separate from :func:`setup_mlflow` because the API must not require a
     reachable server to start: it degrades to "no model yet" instead.
 
+    Left unset, this points at ``http://127.0.0.1:$MLFLOW_PORT`` rather than a
+    hardcoded port, so a native process finds whichever local server —
+    `make mlflow`, or the one Docker publishes — is actually listening on
+    MLFLOW_PORT. Set MLFLOW_TRACKING_URI explicitly to point somewhere else
+    entirely, such as a remote tracking server.
+
     Returns:
         The tracking URI now in effect.
     """
-    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", DEFAULT_MLFLOW_TRACKING_URI)
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI") or _default_tracking_uri()
     if mlflow.get_tracking_uri() != tracking_uri:
         mlflow.set_tracking_uri(tracking_uri)
         logger.info("MLflow tracking URI set to: %s", tracking_uri)
@@ -97,8 +125,10 @@ def setup_mlflow() -> str:
         raise RuntimeError(
             "MLflow tracking server is required but is not reachable at "
             f"{tracking_uri!r}. Start it with `mlflow server --host 127.0.0.1 "
-            "--port 5000`, or set MLFLOW_TRACKING_URI to a reachable server. "
-            "The template defaults to a server-backed tracking URI so runs, "
+            f"--port {mlflow_port()}` (or `make mlflow`), point it at a running "
+            "Docker stack with `make docker-pipeline` instead of `make "
+            "pipeline`, or set MLFLOW_TRACKING_URI to a reachable server. The "
+            "template defaults to a server-backed tracking URI so runs, "
             "metrics, models, and artifacts are captured consistently."
         ) from exc
 

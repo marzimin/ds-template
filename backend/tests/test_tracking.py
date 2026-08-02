@@ -14,8 +14,10 @@ import pytest
 
 from src.ml.tracking import (
     build_signature,
+    configure_tracking_uri,
     experiment_name,
     log_model,
+    mlflow_port,
     registered_model_name,
     resolve_flavor,
 )
@@ -148,3 +150,50 @@ def test_names_honour_explicit_config():
     }
     assert registered_model_name(config) == "custom-model"
     assert experiment_name(config) == "custom-experiment"
+
+
+@pytest.fixture(name="restore_tracking_uri")
+def restore_tracking_uri_fixture():
+    """Undo the process-global side effect configure_tracking_uri() makes.
+
+    mlflow.set_tracking_uri is not test-scoped, so a test that lets it run
+    would otherwise point every later test in the module at whatever URI it
+    computed.
+    """
+    previous = mlflow.get_tracking_uri()
+    yield
+    mlflow.set_tracking_uri(previous)
+
+
+def test_mlflow_port_defaults_to_5000(monkeypatch):
+    """Matches the port `make mlflow` binds to when MLFLOW_PORT is unset."""
+    monkeypatch.delenv("MLFLOW_PORT", raising=False)
+    assert mlflow_port() == "5000"
+
+
+def test_mlflow_port_honours_the_environment(monkeypatch):
+    """The port compose publishes MLflow on is the one native tooling assumes."""
+    monkeypatch.setenv("MLFLOW_PORT", "5001")
+    assert mlflow_port() == "5001"
+
+
+def test_configure_tracking_uri_follows_mlflow_port(monkeypatch, restore_tracking_uri):
+    """Moving MLFLOW_PORT moves the default without setting MLFLOW_TRACKING_URI.
+
+    This is what lets a native `make pipeline` find MLflow published on a
+    non-default host port — the AirPlay Receiver on macOS claims 5000, so
+    `make demo` commonly runs with MLFLOW_PORT=5001, and before this the
+    native default stayed pinned to 5000 regardless.
+    """
+    monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
+    monkeypatch.setenv("MLFLOW_PORT", "5001")
+    assert configure_tracking_uri() == "http://127.0.0.1:5001"
+
+
+def test_configure_tracking_uri_prefers_explicit_override(
+    monkeypatch, restore_tracking_uri
+):
+    """An explicit MLFLOW_TRACKING_URI still wins, e.g. for a remote server."""
+    monkeypatch.setenv("MLFLOW_PORT", "5001")
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", "https://tracking.example.com")
+    assert configure_tracking_uri() == "https://tracking.example.com"
