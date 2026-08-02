@@ -10,7 +10,9 @@ which is what lets a frontend build its input form at runtime.
 """
 
 import logging
+import os
 import threading
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -338,17 +340,86 @@ def load_model(config: dict[str, Any]) -> LoadedModel:
 # seconds, which is fine at startup and not per request.
 _cache_lock = threading.Lock()
 _cached_model: LoadedModel | None = None
+#: When the registry was last asked for the newest version, on the monotonic
+#: clock. Monotonic rather than wall time so a clock adjustment cannot park the
+#: next check arbitrarily far in the future.
+_checked_at: float = 0.0
+
+#: How long a cached model is trusted before the registry is consulted again.
+#: Overridable so a deployment that trains rarely can lengthen it, and 0 turns
+#: the polling off entirely, leaving POST /api/predict/reload as the only way to
+#: pick up a new version.
+_REFRESH_ENV = "MODEL_REFRESH_SECONDS"
+_DEFAULT_REFRESH_SECONDS = 30.0
+
+
+def _refresh_interval() -> float:
+    """Return the staleness check interval in seconds; 0 disables checking."""
+    raw = os.getenv(_REFRESH_ENV)
+    if raw is None or not raw.strip():
+        return _DEFAULT_REFRESH_SECONDS
+    try:
+        return max(float(raw), 0.0)
+    except ValueError:
+        logger.warning(
+            "%s=%r is not a number; falling back to %.0fs.",
+            _REFRESH_ENV,
+            raw,
+            _DEFAULT_REFRESH_SECONDS,
+        )
+        return _DEFAULT_REFRESH_SECONDS
+
+
+def _newest_registered_version(config: dict[str, Any]) -> str | None:
+    """Return the newest registered version number, or None if unknowable.
+
+    Deliberately swallows every registry failure. This runs on the request path
+    behind a model that is already loaded and working, so a tracking server that
+    is briefly down must leave that model serving rather than take the API down
+    with it — the check is an optimisation, never a liveness requirement.
+    """
+    try:
+        client = MlflowClient()
+        return str(_latest_version(client, registered_model_name(config)).version)
+    except (ModelNotAvailableError, MlflowException, OSError) as exc:
+        logger.debug("Could not check for a newer model version: %s", exc)
+        return None
 
 
 def get_cached_model(config: dict[str, Any]) -> LoadedModel:
     """Return the cached model, loading it on first use.
 
+    Once loaded, the registry is re-checked at most once per
+    ``MODEL_REFRESH_SECONDS`` and the model is reloaded only when the newest
+    registered version differs from the one in memory. The check is a metadata
+    query — cheap next to a load, which downloads artifacts — so training a new
+    version while the API runs is picked up on its own, without a restart and
+    without paying the load cost on every request.
+
     Raises:
         ModelNotAvailableError: If no model could be loaded.
     """
-    global _cached_model
+    global _cached_model, _checked_at
     with _cache_lock:
         if _cached_model is None:
+            _cached_model = load_model(config)
+            _checked_at = time.monotonic()
+            return _cached_model
+
+        interval = _refresh_interval()
+        if not interval or time.monotonic() - _checked_at < interval:
+            return _cached_model
+
+        # Record the attempt before making it, so a registry that is down costs
+        # one query per interval rather than one per request.
+        _checked_at = time.monotonic()
+        newest = _newest_registered_version(config)
+        if newest is not None and newest != _cached_model.version:
+            logger.info(
+                "Registry has version %s; reloading from %s.",
+                newest,
+                _cached_model.version,
+            )
             _cached_model = load_model(config)
         return _cached_model
 
@@ -358,6 +429,7 @@ def clear_model_cache() -> None:
 
     Used after training a new version, and by tests.
     """
-    global _cached_model
+    global _cached_model, _checked_at
     with _cache_lock:
         _cached_model = None
+        _checked_at = 0.0
