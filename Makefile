@@ -7,11 +7,24 @@
 # `build` in particular means "rebuild the container image" in both; the
 # frontend bundle is `bundle`.
 
+# Reads one key out of .env, or nothing if the file or the key is absent.
+# Commented-out lines do not match: the key has to start the line. A trailing
+# ` # comment` is dropped, and it has to be whitespace-preceded to count as one,
+# which is the same rule docker compose applies to its own .env parsing — the
+# value ends up exported, so anything left on it would override that parse.
+env_value = $(strip $(shell [ -f .env ] && sed -n 's/^[[:space:]]*$(1)[[:space:]]*=[[:space:]]*//p' .env | tail -1 | sed 's/[[:space:]][[:space:]]*\#.*$$//' | tr -d "\"'"))
+
+# Precedence for the three port knobs: command line, then the environment, then
+# .env, then the default here. .env has to be read explicitly — make does not
+# read it, and docker compose gives an exported environment variable precedence
+# over the .env file it reads itself. So without the $(call env_value,...) the
+# `export` below would pin 5000 and silently beat whatever .env says, making the
+# knob that .env.example and docker-compose.yml both advertise do nothing.
 MLFLOW_HOST ?= 127.0.0.1
-MLFLOW_PORT ?= 5000
+MLFLOW_PORT ?= $(or $(call env_value,MLFLOW_PORT),5000)
 API_HOST ?= 127.0.0.1
-API_PORT ?= 8000
-WEB_PORT ?= 5173
+API_PORT ?= $(or $(call env_value,API_PORT),8000)
+WEB_PORT ?= $(or $(call env_value,WEB_PORT),5173)
 BACKEND := backend
 FRONTEND := frontend
 COMPOSE := docker compose
