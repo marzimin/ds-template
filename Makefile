@@ -24,7 +24,7 @@ export MLFLOW_PORT API_PORT WEB_PORT
 .DEFAULT_GOAL := help
 .PHONY: help setup setup-backend setup-frontend hooks test test-backend test-frontend \
         lint lint-backend lint-frontend format typecheck check pipeline mlflow api web \
-        types bundle up down logs build reset docker-pipeline sample-data clean
+        types bundle demo up down logs build reset docker-pipeline sample-data clean
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -70,10 +70,25 @@ sample-data: ## Regenerate the demo datasets into data/raw/
 
 ## ── Docker ───────────────────────────────────────────────────────────────────
 
-up: ## Start MLflow, the API and the web interface in the background
+demo: ## Start everything AND train a model, so the app has something to show
+	$(COMPOSE) up -d
+	@echo ""
+	@echo "Training the demo model — a minute or so the first time."
+	$(COMPOSE) run --rm pipeline
+	@echo ""
+	@echo "  App        →  http://localhost:$(WEB_PORT)"
+	@echo "  API docs   →  http://localhost:$(API_PORT)/docs"
+	@echo "  MLflow     →  http://localhost:$(MLFLOW_PORT)"
+	@echo ""
+	@echo "Stop it with 'make down'."
+
+up: ## Start MLflow, the API and the web interface (no model until you train one)
 	@echo "App        →  http://localhost:$(WEB_PORT)"
 	@echo "API docs   →  http://localhost:$(API_PORT)/docs"
 	@echo "MLflow     →  http://localhost:$(MLFLOW_PORT)"
+	@echo ""
+	@echo "Nothing is trained yet — run 'make docker-pipeline', or use 'make demo'"
+	@echo "next time to do both in one step."
 	$(COMPOSE) up -d
 
 down: ## Stop all services (runs, models and artifacts are preserved)
