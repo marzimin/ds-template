@@ -19,10 +19,12 @@ You only edit the first two to use it with your own data.
 
 ---
 
-## Quick start
+## Quick start (DS/ML Development)
 
 **Prerequisites:** [uv](https://docs.astral.sh/uv/) (`brew install uv`) and
-Node.js 22+. Or just Docker — see [Running it in containers](#running-it-in-containers).
+Node.js 22+. 
+
+Or just Docker (Desktop) if you're running as an end user — see [Running it in containers](#running-it-in-containers).
 
 ```bash
 make setup
@@ -35,7 +37,7 @@ Then, in **two terminals**:
 
 ```bash
 make mlflow      # terminal 1 — the experiment tracking server
-make pipeline    # terminal 2 — prepare → explore → train
+make pipeline    # terminal 2 — prepare → explore → train (retrain)
 ```
 
 > On macOS, port 5000 is often taken by the AirPlay Receiver. If MLflow appears
@@ -71,7 +73,7 @@ Open **<http://127.0.0.1:5000>** to browse runs in MLflow.
 
 ---
 
-## Running the web application
+## Running the web application (ML + Frontend / Backend Development)
 
 Three terminals, one per process:
 
@@ -107,7 +109,7 @@ backend without the frontend.
 
 ---
 
-## Running it in containers
+## Running it in containers (End User Demo)
 
 Everything at once, with nothing installed but Docker:
 
