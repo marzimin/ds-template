@@ -13,7 +13,7 @@ from mlflow.exceptions import MlflowException
 from src.config import project_name
 from src.ml.eda import EDAPipeline
 from src.ml.prepare_data import PrepareDataPipeline
-from src.ml.tracking import setup_mlflow
+from src.ml.tracking import mlflow_port, setup_mlflow
 from src.ml.train_model import TrainModelPipeline
 
 logging.basicConfig(
@@ -81,8 +81,10 @@ def main() -> None:
     except MlflowException as exc:
         raise SystemExit(
             "Could not create an MLflow run at "
-            f"{tracking_uri!r}. Start a compatible MLflow server with "
-            "`mlflow server --host 127.0.0.1 --port 5000`, or set "
+            f"{tracking_uri!r}: {exc} Start a compatible MLflow server with "
+            f"`mlflow server --host 127.0.0.1 --port {mlflow_port()}` (or "
+            "`make mlflow`), retrain against a running Docker stack with "
+            "`make docker-pipeline` instead of `make pipeline`, or set "
             "MLFLOW_TRACKING_URI to a reachable server."
         ) from exc
 
