@@ -12,7 +12,7 @@ from pathlib import Path
 import mlflow
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import FileResponse
-from mlflow.entities import ViewType
+from mlflow.entities import Run, ViewType
 from mlflow.exceptions import MlflowException
 
 from src.api.contracts import ArtifactEntry, RunDetail, RunSummary
@@ -179,7 +179,7 @@ def _artifact_exists(client: ClientDep, run_id: str, path: str) -> bool:
     return any(entry.path == path and not entry.is_dir for entry in entries)
 
 
-def _fetch_run(run_id: str, client: ClientDep) -> mlflow.entities.Run:
+def _fetch_run(run_id: str, client: ClientDep) -> Run:
     """Return a run by id.
 
     Raises:
@@ -194,7 +194,7 @@ def _fetch_run(run_id: str, client: ClientDep) -> mlflow.entities.Run:
         ) from exc
 
 
-def _to_summary(run: mlflow.entities.Run) -> RunSummary:
+def _to_summary(run: Run) -> RunSummary:
     """Convert an MLflow run entity into a response model."""
     return RunSummary(
         run_id=run.info.run_id,

@@ -30,15 +30,13 @@ repos:
           - -x
           - .venv,backend/tests
 
-  # Hooks run from the repository root, so mypy is pointed at the backend
+  # Hooks run from the repository root, so ty is pointed at the backend
   # project explicitly: its config lives in backend/pyproject.toml and its
-  # imports are rooted at backend/ (`from src.ml...`).
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.19.1
+  # imports are rooted at backend/ (`from src.ml...`). Unlike the old mypy
+  # hook, ty always checks the whole project rather than just the files in a
+  # commit — a change in one file can surface new diagnostics in another.
+  - repo: https://github.com/astral-sh/ty-pre-commit
+    rev: v0.0.69
     hooks:
-      - id: mypy
-        additional_dependencies:
-          [types-PyYAML, pandas, numpy, mlflow, xgboost, scikit-learn]
-        files: ^backend/
-        exclude: ^backend/tests/
-        args: ["--config-file", "backend/pyproject.toml"]
+      - id: ty
+        args: ["--project", "backend"]

@@ -3,12 +3,13 @@
 import importlib
 import logging
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 import mlflow
 import pandas as pd
-from sklearn.base import BaseEstimator, is_classifier, is_regressor
+from sklearn.base import is_classifier, is_regressor
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 
@@ -32,6 +33,19 @@ from src.ml.tracking import (
 from src.schemas import normalise_column_name
 
 logger = logging.getLogger(__name__)
+
+
+class _Estimator(Protocol):
+    """The scikit-learn estimator surface this pipeline relies on.
+
+    `BaseEstimator` itself declares neither `fit` nor `predict` — those come
+    from mixins (`ClassifierMixin`, `RegressorMixin`, ...) that vary by the
+    concrete class the model registry loads at runtime. This Protocol names
+    the subset every registered model is expected to implement.
+    """
+
+    def fit(self, X: pd.DataFrame, y: pd.Series) -> object: ...
+    def predict(self, X: pd.DataFrame) -> object: ...
 
 
 class TrainModelPipeline(Pipeline):
@@ -64,7 +78,7 @@ class TrainModelPipeline(Pipeline):
         self.model_name = str(configured_name).lower()
         self.model_params = self._select_model_params()
         self.run_name = run_name or "Default_Run_Name"
-        self.model: BaseEstimator | None = None
+        self.model: _Estimator | None = None
         # Resolved from the target in _validate_training_data. Defaults to
         # binary so the attribute is always a valid TaskType.
         self.task: TaskType = TaskType.BINARY
@@ -264,7 +278,7 @@ class TrainModelPipeline(Pipeline):
 
         return features, target
 
-    def _build_model(self) -> BaseEstimator:
+    def _build_model(self) -> _Estimator:
         """Construct the model based on configuration.
 
         The model registry is read from ``cfg/config.yaml`` under the
@@ -287,14 +301,14 @@ class TrainModelPipeline(Pipeline):
             )
         self.class_path = class_path
         module_name, class_name = class_path.rsplit(".", 1)
-        model_cls: type[BaseEstimator] = getattr(
+        model_cls: type[_Estimator] = getattr(
             importlib.import_module(module_name), class_name
         )
         model = model_cls(**self.model_params)
         self._check_model_suits_task(model)
         return model
 
-    def _check_model_suits_task(self, model: BaseEstimator) -> None:
+    def _check_model_suits_task(self, model: _Estimator) -> None:
         """Fail early when the estimator family does not match the target.
 
         A regressor fitted on class labels trains without complaint and only
@@ -410,7 +424,10 @@ class TrainModelPipeline(Pipeline):
             raise RuntimeError("Model has not been trained.")
 
         if hasattr(self.model, "predict_proba"):
-            proba = self.model.predict_proba(features)
+            predict_proba = cast(
+                Callable[[pd.DataFrame], Any], self.model.predict_proba
+            )
+            proba = predict_proba(features)
             model_classes = cast(
                 list[object], list(getattr(self.model, "classes_", []))
             )
@@ -423,7 +440,10 @@ class TrainModelPipeline(Pipeline):
             return pd.Series(proba[:, model_classes.index(positive_label)])
 
         if hasattr(self.model, "decision_function"):
-            raw_scores = self.model.decision_function(features)
+            decision_function = cast(
+                Callable[[pd.DataFrame], Any], self.model.decision_function
+            )
+            raw_scores = decision_function(features)
             if hasattr(raw_scores, "ndim") and raw_scores.ndim > 1:
                 return pd.Series(raw_scores[:, 1])
             return pd.Series(raw_scores)

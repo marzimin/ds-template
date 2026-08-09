@@ -6,6 +6,7 @@
     "ms-python.python",
     "ms-python.vscode-pylance",
     "charliermarsh.ruff",
+    "astral-sh.ty",
     "ms-toolsai.jupyter",
     "ms-azuretools.vscode-docker",
     "dbaeumer.vscode-eslint",
