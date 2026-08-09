@@ -1,3 +1,4 @@
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -5,7 +6,7 @@ import pytest
 
 from src.ml.train_model import TrainModelPipeline
 
-_MOCK_CONFIG = {
+_MOCK_CONFIG: dict[str, Any] = {
     "model_name": "xgb_classifier",
     "model_params": {
         "objective": "binary:logistic",

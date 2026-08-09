@@ -102,6 +102,7 @@ def test_log_model_round_trip(class_path, training_data, tracking_uri):
 
     loaded = mlflow.pyfunc.load_model(model_uri)
     predictions = loaded.predict(features.head(3))
+    assert predictions is not None
     assert len(predictions) == 3
 
     # The signature is what the API turns into a prediction form, so the input

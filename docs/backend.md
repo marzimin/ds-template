@@ -175,9 +175,10 @@ two settings you are most likely to change.
 
 ## Quality gates
 
-`make lint-backend` runs Ruff (lint and format), MyPy in strict mode, Bandit,
-and pydocstyle via pre-commit. The same checks run in CI, and the git hook runs
-them before each commit.
+`make lint-backend` runs Ruff (lint and format), [ty](https://docs.astral.sh/ty/)
+for type checking, Bandit, and pydocstyle via pre-commit. The same checks run in
+CI, and the git hook runs them before each commit. See
+[dev-practices.md](dev-practices.md) for the reasoning behind this toolchain.
 
 If a commit ever fails with `pre-commit not found`, the installed hook points at
 a virtualenv that no longer exists — run `make hooks`.

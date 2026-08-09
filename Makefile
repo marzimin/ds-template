@@ -154,16 +154,14 @@ format: ## Format both halves in place
 	cd $(FRONTEND) && npm run format
 
 typecheck: ## Type-check both halves
-	# tests/ is included so the `ignore_errors` override in pyproject.toml
-	# applies; mypy warns the section is unused if they are left out.
-	cd $(BACKEND) && uv run mypy src scripts tests
+	cd $(BACKEND) && uv run ty check
 	cd $(FRONTEND) && npm run typecheck
 
 bundle: ## Produce the production frontend bundle
 	cd $(FRONTEND) && npm run build
 
 clean: ## Remove caches and build artefacts
-	rm -rf $(BACKEND)/.pytest_cache $(BACKEND)/.mypy_cache $(BACKEND)/.ruff_cache
+	rm -rf $(BACKEND)/.pytest_cache $(BACKEND)/.ruff_cache
 	rm -rf $(BACKEND)/htmlcov $(BACKEND)/.coverage
 	find $(BACKEND) -name '__pycache__' -type d -prune -exec rm -rf {} +
 	rm -rf $(FRONTEND)/dist $(FRONTEND)/.vite

@@ -22,7 +22,7 @@ You only edit the first two to use it with your own data.
 ## Quick start (DS/ML Development)
 
 **Prerequisites:** [uv](https://docs.astral.sh/uv/) (`brew install uv`) and
-Node.js 22+. 
+Node.js 22+.
 
 Or just Docker (Desktop) if you're running as an end user — see [Running it in containers](#running-it-in-containers).
 
