@@ -18,7 +18,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "pyyaml>=6.0",
     "fastapi>=0.135.3",
-    "uvicorn[standard]>=0.44.0",
+    "uvicorn[standard]>=0.52.3",
 ]
 
 # ── Optional dependency groups ─────────────────────────────────────────────
