@@ -281,7 +281,7 @@ the page. Whichever is the innermost broken layer is where the problem is.
 
 | Symptom | Layer | Check |
 | --- | --- | --- |
-| Page loads, every panel empty | API not running | Open `http://localhost:8000/docs` |
+| Page loads, every panel empty | API not running | Open `http://localhost:8000/redoc` |
 | Predictions return `503` | No trained model | `make pipeline` |
 | Predictions return `422` | Input does not match the signature | Compare against `/api/predict/schema` |
 | API fails at startup | MLflow unreachable | Is it running? Is `MLFLOW_TRACKING_URI` right? |

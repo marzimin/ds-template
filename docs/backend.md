@@ -62,7 +62,7 @@ The API's payload module is called `contracts.py` rather than the conventional
 make api      # http://127.0.0.1:8000
 ```
 
-Then open **<http://127.0.0.1:8000/docs>** — FastAPI generates an interactive
+Then open **<http://127.0.0.1:8000/redoc>** — FastAPI generates an interactive
 page from your function signatures, listing every endpoint with a form to call
 it. It is the fastest way to exercise the backend, and it works before any
 frontend exists.

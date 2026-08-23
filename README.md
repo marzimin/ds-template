@@ -103,7 +103,7 @@ The header shows whether the API is reachable and which model version is loaded.
 rather than showing an error, and picks the model up on the next request — no
 restart needed.
 
-`make api` alone also gives you **<http://127.0.0.1:8000/docs>**: an interactive
+`make api` alone also gives you **<http://127.0.0.1:8000/redoc>**: an interactive
 page listing every endpoint with a form to try it. Useful for checking the
 backend without the frontend.
 
@@ -118,7 +118,7 @@ make demo        # start the services AND train a model
 ```
 
 That is the one to run first. It leaves you with a working app at
-**<http://localhost:5173>**, `:8000/docs` and `:5000`.
+**<http://localhost:5173>**, `:8000/redoc` and `:5000`.
 
 The pieces separately, once you know your way around:
 
