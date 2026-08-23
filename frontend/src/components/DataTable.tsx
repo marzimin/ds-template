@@ -11,8 +11,8 @@ import type { ReactNode } from 'react';
 export interface Column<Row> {
   /** Stable identity for the column, used as the React key. */
   key: string;
-  /** Header text. */
-  header: string;
+  /** Header content. Usually text, but a select-all checkbox needs a node. */
+  header: ReactNode;
   /** Cell contents for one row. */
   render: (row: Row) => ReactNode;
   /** Right-align and use tabular figures. Set for numeric columns. */

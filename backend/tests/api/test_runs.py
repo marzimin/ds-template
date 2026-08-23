@@ -168,6 +168,33 @@ def test_artifact_file_404_for_directory(client, mlflow_client):
     assert response.status_code == 404
 
 
+def test_delete_run(client, mlflow_client):
+    """A run is deleted through the MLflow client."""
+    mlflow_client.get_run.return_value = _run()
+
+    response = client.delete("/api/runs/run-1")
+    assert response.status_code == 204
+    mlflow_client.delete_run.assert_called_once_with("run-1")
+
+
+def test_delete_run_404_when_absent(client, mlflow_client):
+    """Deleting an unknown run id is a 404, not a 500."""
+    mlflow_client.get_run.side_effect = MlflowException("no such run")
+
+    response = client.delete("/api/runs/nope")
+    assert response.status_code == 404
+    mlflow_client.delete_run.assert_not_called()
+
+
+def test_delete_run_502_when_mlflow_fails(client, mlflow_client):
+    """An MLflow outage during delete is reported as an upstream failure."""
+    mlflow_client.get_run.return_value = _run()
+    mlflow_client.delete_run.side_effect = MlflowException("connection refused")
+
+    response = client.delete("/api/runs/run-1")
+    assert response.status_code == 502
+
+
 def test_list_runs_502_when_mlflow_fails(client, mlflow_client):
     """An MLflow outage is reported as an upstream failure, not our bug."""
     mlflow_client.get_experiment_by_name.return_value = SimpleNamespace(

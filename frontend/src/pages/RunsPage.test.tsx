@@ -4,7 +4,8 @@
  * The claim being verified is that metric columns come from the data rather
  * than a fixed list, so a pipeline logging different metrics still displays.
  */
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { RunsPage } from './RunsPage';
@@ -71,4 +72,45 @@ it('shows an empty state, not an error, when nothing has run', async () => {
 
   expect(await screen.findByText('No runs yet')).toBeInTheDocument();
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('deletes the selected runs after confirmation', async () => {
+  const user = userEvent.setup();
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  const fetchMock = mockFetch({
+    '/api/runs/run-1': { status: 204, body: undefined },
+    '/api/runs': { body: [run({ run_id: 'run-1' })] },
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  renderWithProviders(<RunsPage />);
+
+  await user.click(await screen.findByRole('checkbox', { name: /select run nightly/i }));
+  await user.click(screen.getByRole('button', { name: /delete 1 selected/i }));
+
+  await waitFor(() => {
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/runs/run-1'),
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+  });
+  expect(window.confirm).toHaveBeenCalled();
+});
+
+it('selects and clears all runs with the header checkbox', async () => {
+  const user = userEvent.setup();
+  vi.stubGlobal(
+    'fetch',
+    mockFetch({
+      '/api/runs': { body: [run({ run_id: 'run-1' }), run({ run_id: 'run-2' })] },
+    }),
+  );
+  renderWithProviders(<RunsPage />);
+
+  const selectAll = await screen.findByRole('checkbox', { name: 'Select all runs' });
+  await user.click(selectAll);
+
+  expect(screen.getByRole('button', { name: /delete 2 selected/i })).toBeInTheDocument();
+
+  await user.click(selectAll);
+  expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument();
 });

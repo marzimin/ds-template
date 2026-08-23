@@ -70,6 +70,30 @@ export function useRuns(limit = 50) {
   });
 }
 
+export function useDeleteRuns() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    // Runs are deleted one request per id rather than a bulk endpoint. Every
+    // request is attempted even if one fails, so a partial failure still
+    // deletes what it could; the failures are then reported together.
+    mutationFn: async (runIds: string[]) => {
+      const results = await Promise.allSettled(runIds.map((runId) => api.deleteRun(runId)));
+      const failures = results.filter(
+        (result): result is PromiseRejectedResult => result.status === 'rejected',
+      );
+      if (failures.length > 0) {
+        const detail = failures[0]?.reason instanceof Error ? failures[0].reason.message : '';
+        throw new Error(
+          `Failed to delete ${failures.length} of ${runIds.length} run(s).${detail ? ` ${detail}` : ''}`,
+        );
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['runs'] });
+    },
+  });
+}
+
 export function useRun(runId: string) {
   return useQuery({
     queryKey: queryKeys.run(runId),

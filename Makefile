@@ -67,7 +67,7 @@ mlflow: ## Start a local MLflow tracking server
 	cd $(BACKEND) && uv run mlflow server --host $(MLFLOW_HOST) --port $(MLFLOW_PORT)
 
 api: ## Start the FastAPI server (interactive docs at /docs)
-	@echo "API docs: http://$(API_HOST):$(API_PORT)/docs"
+	@echo "API docs: http://$(API_HOST):$(API_PORT)/redoc"
 	cd $(BACKEND) && uv run uvicorn src.api.app:app --reload \
 		--host $(API_HOST) --port $(API_PORT)
 

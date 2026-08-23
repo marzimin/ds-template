@@ -81,6 +81,31 @@ def get_run(run_id: str, client: ClientDep) -> RunDetail:
     )
 
 
+@router.delete(
+    "/{run_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a run",
+)
+def delete_run(run_id: str, client: ClientDep) -> None:
+    """Delete one run from MLflow.
+
+    This is a soft delete on MLflow's side (the run moves to its deleted-run
+    view rather than disappearing outright), which is enough to drop it out of
+    the dashboard's listing without touching artifact storage here.
+
+    Raises:
+        HTTPException: 404 if the run does not exist.
+    """
+    _fetch_run(run_id, client)
+    try:
+        client.delete_run(run_id)
+    except MlflowException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Could not delete run {run_id!r}: {exc}",
+        ) from exc
+
+
 @router.get(
     "/{run_id}/artifacts",
     response_model=list[ArtifactEntry],

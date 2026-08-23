@@ -59,6 +59,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(response.status, await readErrorDetail(response));
   }
 
+  if (response.status === 204) return undefined as T;
+
   return (await response.json()) as T;
 }
 
@@ -107,6 +109,9 @@ export const api = {
   runs: (limit = 50) => request<RunSummary[]>(`/api/runs?limit=${limit}`),
 
   run: (runId: string) => request<RunDetail>(`/api/runs/${encodeURIComponent(runId)}`),
+
+  deleteRun: (runId: string) =>
+    request<void>(`/api/runs/${encodeURIComponent(runId)}`, { method: 'DELETE' }),
 
   artifacts: (runId: string, path = '') => {
     const query = path ? `?path=${encodeURIComponent(path)}` : '';

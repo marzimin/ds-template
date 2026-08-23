@@ -138,7 +138,18 @@ export interface paths {
         get: operations["get_run_api_runs__run_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete a run
+         * @description Delete one run from MLflow.
+         *
+         *     This is a soft delete on MLflow's side (the run moves to its deleted-run
+         *     view rather than disappearing outright), which is enough to drop it out of
+         *     the dashboard's listing without touching artifact storage here.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the run does not exist.
+         */
+        delete: operations["delete_run_api_runs__run_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -638,6 +649,44 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RunDetail"];
                 };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No model available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_run_api_runs__run_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Invalid request */
             422: {
