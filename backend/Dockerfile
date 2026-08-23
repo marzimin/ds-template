@@ -12,7 +12,7 @@
 #       uv run mlflow server --host 0.0.0.0 --port 5000
 #
 # docker-compose.yml at the repository root wires all three together.
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # Stamped by .github/workflows/build.yml with the tag it just pushed, so a
 # running container can be traced back to a commit. Without the ARG the
